@@ -15,7 +15,8 @@
     "db:test:local": "supabase test db --local",
     "db:types:local": "supabase gen types typescript --local --schema public > src/types/database.types.ts",
     "db:migration:new": "supabase migration new",
-    "test:auth:routes:local": "node scripts/auth/auth-routes.local.mjs"
+    "test:auth:routes:local": "node scripts/auth/auth-routes.local.mjs",
+    "test:auth:admin-mfa:local": "node scripts/auth/admin-mfa.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

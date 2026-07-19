@@ -1,7 +1,10 @@
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f]/;
 const WHITESPACE_PATTERN = /\s/;
 const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SAFE_AUTH_NEXT_PATHS = new Set(["/account", "/"]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const TOTP_CODE_PATTERN = /^\d{6}$/;
+const SAFE_AUTH_NEXT_PATHS = new Set(["/account", "/admin", "/"]);
 
 export function normalizeEmail(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -54,6 +57,42 @@ export function validateRecoveryTokenHash(value: unknown): string | null {
   }
 
   return value;
+}
+
+export function validateTotpCode(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (
+    normalized.length !== 6 ||
+    CONTROL_CHARACTER_PATTERN.test(normalized) ||
+    !TOTP_CODE_PATTERN.test(normalized)
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+export function validateMfaFactorId(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (
+    normalized.length > 64 ||
+    CONTROL_CHARACTER_PATTERN.test(normalized) ||
+    !UUID_PATTERN.test(normalized)
+  ) {
+    return null;
+  }
+
+  return normalized;
 }
 
 export function normalizeDisplayName(

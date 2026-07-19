@@ -2,7 +2,8 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Supabase proxy cookie boundary scaffold.
+Current phase: Auth identity, password recovery guard, and local ADMIN MFA
+boundary scaffold.
 
 ## Stack
 
@@ -127,7 +128,52 @@ Run the local auth route integration script after starting local Supabase, reset
 npm run test:auth:routes:local
 ```
 
-ADMIN role management, MFA, current-password change, service-role application access, remote Supabase, and production database workflows are still not implemented.
+ADMIN role provisioning APIs, MFA factor removal UI, recovery codes,
+break-glass recovery, current-password change, service-role application
+access, remote Supabase, and production database workflows are still not
+implemented.
+
+## ADMIN MFA Boundary
+
+Administrative access is protected by a centralized server guard. `/admin`
+requires all of the following:
+
+- A verified Supabase Auth session
+- An `ACTIVE` profile
+- An active `ADMIN` role in `public.user_roles`
+- Current session AAL2 from a verified TOTP factor
+
+The browser does not read `public.user_roles` directly, does not send an
+admin flag, and does not provide trusted AAL or factor state. Role checks use
+the `public.is_current_user_admin()` database function and AAL2 checks use
+`public.is_current_user_admin_aal2()`.
+
+Local TOTP enrollment and challenge routes are available:
+
+```text
+GET /admin
+GET /auth/mfa/enroll
+POST /api/v1/auth/mfa/enroll/start
+POST /api/v1/auth/mfa/enroll/verify
+GET /auth/mfa/challenge
+POST /api/v1/auth/mfa/challenge
+```
+
+Enrollment is POST-only. The enrollment page does not create a factor on GET.
+QR data, manual secrets, factor IDs, TOTP codes, cookies, and tokens are held
+only in browser or test process memory and must not be logged or committed.
+
+Run the local ADMIN MFA integration script after starting local Supabase,
+resetting the DB, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:auth:admin-mfa:local
+```
+
+Application ADMIN role grant and revoke APIs are intentionally not present.
+Local E2E tests grant and revoke the QA admin role directly through the local
+database only, then reset the database afterward.
 
 ## Health Route
 
@@ -183,10 +229,9 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 
 - Real Supabase project connection
 - Complete Auth proxy session policy
-- Password reset
 - Auth callback for hosted OAuth or remote flows
 - ADMIN role management
-- MFA
+- MFA factor removal, recovery codes, and break-glass recovery
 - Ledger
 - Financial features
 - Production deployment
