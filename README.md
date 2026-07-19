@@ -107,7 +107,27 @@ Routes:
 
 Auth POST routes require same-origin form submissions, use safe redirect allowlists, and do not expose raw Supabase errors. `/account` is the first protected page and reads the signed-in user's own profile through RLS.
 
-Password reset, ADMIN role management, MFA, service-role application access, remote Supabase, and production database workflows are still not implemented.
+Password recovery pages and route boundaries now exist for local testing:
+
+- `GET /auth/forgot-password`
+- `POST /api/v1/auth/password-reset/request`
+- `GET /auth/password-reset-sent`
+- `GET /auth/recovery`
+- `POST /api/v1/auth/password-reset/update`
+- `GET /auth/password-updated`
+- `GET /auth/account-unavailable`
+
+The recovery email link opens `/auth/recovery` and does not consume the token on GET. The page renders the new password form and sends the recovery token and password in the same same-origin POST to `/api/v1/auth/password-reset/update`.
+
+Local validation found that the current Supabase Auth runtime emits AMR method `otp` after recovery verification instead of a distinct `recovery` method. The app does not treat AMR, cookies, query flags, metadata, `getSession()`, or a normal login session as recovery proof. The adopted design trusts only a valid unused recovery token verified in the same POST that performs the password update, followed by the centralized account guard and global sign-out.
+
+Run the local auth route integration script after starting local Supabase, resetting the DB, and running the production Next.js server on `http://localhost:3000`:
+
+```bash
+npm run test:auth:routes:local
+```
+
+ADMIN role management, MFA, current-password change, service-role application access, remote Supabase, and production database workflows are still not implemented.
 
 ## Health Route
 

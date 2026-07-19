@@ -5,6 +5,7 @@ import {
   getSafeAuthNextPath,
   normalizeDisplayName,
   normalizeEmail,
+  validateRecoveryTokenHash,
   validatePassword,
 } from "@/lib/auth/validation";
 
@@ -27,6 +28,19 @@ export type SignInForm = {
 export type ConfirmEmailForm = {
   tokenHash: string;
   nextPath: string;
+};
+
+export type PasswordResetRequestForm = {
+  email: string;
+};
+
+export type PasswordRecoveryVerifyForm = {
+  tokenHash: string;
+};
+
+export type PasswordUpdateForm = {
+  tokenHash: string;
+  password: string;
 };
 
 export function parseSignUpForm(formData: FormData): ParseResult<SignUpForm> {
@@ -83,16 +97,11 @@ export function parseSignInForm(formData: FormData): ParseResult<SignInForm> {
 export function parseConfirmEmailForm(
   formData: FormData,
 ): ParseResult<ConfirmEmailForm> {
-  const tokenHash = formData.get("token_hash");
+  const tokenHash = validateRecoveryTokenHash(formData.get("token_hash"));
   const type = formData.get("type");
   const nextPath = getSafeAuthNextPath(formData.get("next"));
 
-  if (
-    typeof tokenHash !== "string" ||
-    tokenHash.length < 16 ||
-    tokenHash.length > 512 ||
-    /[\u0000-\u001f\u007f]/.test(tokenHash)
-  ) {
+  if (!tokenHash) {
     return { ok: false, error: "confirmation_invalid" };
   }
 
@@ -107,4 +116,39 @@ export function parseConfirmEmailForm(
       nextPath,
     },
   };
+}
+
+export function parsePasswordResetRequestForm(
+  formData: FormData,
+): ParseResult<PasswordResetRequestForm> {
+  const email = normalizeEmail(formData.get("email"));
+
+  if (!email) {
+    return { ok: false, error: "invalid_input" };
+  }
+
+  return { ok: true, value: { email } };
+}
+
+export function parsePasswordUpdateForm(
+  formData: FormData,
+): ParseResult<PasswordUpdateForm> {
+  const tokenHash = validateRecoveryTokenHash(formData.get("token_hash"));
+  const type = formData.get("type");
+  const password = validatePassword(formData.get("password"));
+  const passwordConfirm = validatePassword(formData.get("password_confirm"));
+
+  if (!tokenHash || type !== "recovery") {
+    return { ok: false, error: "recovery_invalid" };
+  }
+
+  if (!password || !passwordConfirm) {
+    return { ok: false, error: "password_policy" };
+  }
+
+  if (password !== passwordConfirm) {
+    return { ok: false, error: "password_mismatch" };
+  }
+
+  return { ok: true, value: { tokenHash, password } };
 }

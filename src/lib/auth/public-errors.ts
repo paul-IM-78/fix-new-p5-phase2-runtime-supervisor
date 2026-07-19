@@ -7,6 +7,11 @@ export type PublicAuthErrorCode =
   | "signup_unavailable"
   | "confirmation_invalid"
   | "confirmation_expired"
+  | "password_reset_sent"
+  | "recovery_invalid"
+  | "recovery_expired"
+  | "password_update_failed"
+  | "password_updated"
   | "account_restricted"
   | "account_unavailable"
   | "request_rejected"
@@ -21,8 +26,17 @@ const PUBLIC_AUTH_ERROR_MESSAGES: Record<PublicAuthErrorCode, string> = {
   signup_unavailable:
     "지금은 회원가입 요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.",
   confirmation_invalid: "이메일 확인 링크가 유효하지 않습니다.",
-  confirmation_expired: "이메일 확인 링크가 만료되었습니다. 다시 가입을 시도해 주세요.",
-  account_restricted: "현재 계정은 사용할 수 없습니다.",
+  confirmation_expired:
+    "이메일 확인 링크가 만료되었습니다. 다시 가입을 시도해 주세요.",
+  password_reset_sent:
+    "계정이 존재하고 재설정이 가능한 경우 안내 이메일이 발송됩니다.",
+  recovery_invalid: "비밀번호 재설정 링크가 유효하지 않습니다.",
+  recovery_expired:
+    "비밀번호 재설정 링크가 만료되었습니다. 다시 요청해 주세요.",
+  password_update_failed:
+    "비밀번호를 변경할 수 없습니다. 재설정 절차를 다시 진행해 주세요.",
+  password_updated: "비밀번호가 변경되었습니다. 다시 로그인해 주세요.",
+  account_restricted: "현재 계정은 보호 기능을 사용할 수 없습니다.",
   account_unavailable: "계정 상태를 확인할 수 없습니다.",
   request_rejected: "요청을 처리할 수 없습니다.",
   auth_unavailable:
@@ -64,6 +78,33 @@ export function mapSupabaseAuthErrorCode(
       return "password_policy";
     default:
       return fallback;
+  }
+}
+
+export function mapSupabaseRecoveryErrorCode(
+  error: unknown,
+): PublicAuthErrorCode {
+  const code = getSupabaseAuthErrorCode(error);
+
+  switch (code) {
+    case "otp_expired":
+    case "otp_disabled":
+      return "recovery_expired";
+    default:
+      return "recovery_invalid";
+  }
+}
+
+export function mapSupabasePasswordUpdateErrorCode(
+  error: unknown,
+): PublicAuthErrorCode {
+  const code = getSupabaseAuthErrorCode(error);
+
+  switch (code) {
+    case "weak_password":
+      return "password_policy";
+    default:
+      return "password_update_failed";
   }
 }
 

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reset your Staking Wallet password</title>
+  </head>
+  <body>
+    <main>
+      <h1>Reset your password</h1>
+      <p>Use the secure link below to continue your password reset.</p>
+      <p>
+        <a href="{{ .SiteURL }}/auth/recovery?token_hash={{ .TokenHash }}&type=recovery">
+          Reset password
+        </a>
+      </p>
+    </main>
+  </body>
+</html>

@@ -39,6 +39,23 @@ export function validatePassword(value: unknown): string | null {
   return value;
 }
 
+export function validateRecoveryTokenHash(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (
+    value.length < 16 ||
+    value.length > 512 ||
+    CONTROL_CHARACTER_PATTERN.test(value) ||
+    WHITESPACE_PATTERN.test(value)
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
 export function normalizeDisplayName(
   value: unknown,
 ): string | undefined | null {

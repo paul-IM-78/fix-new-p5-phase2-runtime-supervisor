@@ -2,10 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { mapSupabaseAuthErrorCode } from "@/lib/auth/public-errors";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import {
-  getCurrentUserProfileFromClient,
-  isActiveProfile,
-} from "@/server/auth/current-user";
+import { inspectAccountAccess } from "@/server/auth/account-guard";
 import { parseConfirmEmailForm } from "@/server/auth/form-data";
 import { isSameOriginRequest } from "@/server/http/require-same-origin";
 
@@ -43,24 +40,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return redirectNoStore(request, `/auth/error?code=${publicCode}`);
   }
 
-  const currentUser = await getCurrentUserProfileFromClient(supabase);
+  const accountAccess = await inspectAccountAccess(supabase);
 
-  if (currentUser.status === "missing_profile") {
-    await supabase.auth.signOut();
+  if (accountAccess.status === "active") {
+    return redirectNoStore(
+      request,
+      `/auth/verified?next=${encodeURIComponent(nextPath)}`,
+    );
+  }
 
+  await supabase.auth.signOut();
+
+  if (accountAccess.status === "missing_profile") {
     return redirectNoStore(request, "/auth/error?code=account_unavailable");
   }
 
-  if (!isActiveProfile(currentUser)) {
-    await supabase.auth.signOut();
-
+  if (accountAccess.status === "inactive") {
     return redirectNoStore(request, "/auth/error?code=account_restricted");
   }
 
-  return redirectNoStore(
-    request,
-    `/auth/verified?next=${encodeURIComponent(nextPath)}`,
-  );
+  return redirectNoStore(request, "/auth/error?code=auth_unavailable");
 }
 
 function isSupportedFormRequest(request: NextRequest): boolean {

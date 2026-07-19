@@ -2,17 +2,12 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { AccountStatus } from "@/server/auth/account-policy";
+import {
+  getCurrentAccountAccess,
+  inspectAccountAccess,
+} from "@/server/auth/account-guard";
 import type { Database } from "@/types/database.types";
-
-const ACCOUNT_STATUSES = [
-  "ACTIVE",
-  "RESTRICTED",
-  "SUSPENDED",
-  "WITHDRAWN",
-] as const;
-
-export type AccountStatus = (typeof ACCOUNT_STATUSES)[number];
 
 export type CurrentUserProfile = {
   id: string;
@@ -24,43 +19,21 @@ export type CurrentUserProfile = {
 export type CurrentUserResult =
   | { status: "anonymous" }
   | { status: "missing_profile" }
+  | { status: "unavailable" }
   | { status: "ready"; profile: CurrentUserProfile };
 
 export async function getCurrentUserProfile(): Promise<CurrentUserResult> {
-  const supabase = await createServerSupabaseClient();
+  const accountAccess = await getCurrentAccountAccess();
 
-  return getCurrentUserProfileFromClient(supabase);
+  return mapAccountAccessToCurrentUser(accountAccess);
 }
 
 export async function getCurrentUserProfileFromClient(
   supabase: SupabaseClient<Database>,
 ): Promise<CurrentUserResult> {
-  const claimsResult = await supabase.auth.getClaims();
-  const userId = claimsResult.data?.claims.sub;
+  const accountAccess = await inspectAccountAccess(supabase);
 
-  if (claimsResult.error || typeof userId !== "string" || !userId) {
-    return { status: "anonymous" };
-  }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, display_name, account_status, version")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (error || !data || !isAccountStatus(data.account_status)) {
-    return { status: "missing_profile" };
-  }
-
-  return {
-    status: "ready",
-    profile: {
-      id: data.id,
-      displayName: data.display_name,
-      accountStatus: data.account_status,
-      version: data.version,
-    },
-  };
+  return mapAccountAccessToCurrentUser(accountAccess);
 }
 
 export function isActiveProfile(result: CurrentUserResult): boolean {
@@ -70,6 +43,26 @@ export function isActiveProfile(result: CurrentUserResult): boolean {
   );
 }
 
-function isAccountStatus(value: string): value is AccountStatus {
-  return (ACCOUNT_STATUSES as readonly string[]).includes(value);
+function mapAccountAccessToCurrentUser(
+  accountAccess: Awaited<ReturnType<typeof inspectAccountAccess>>,
+): CurrentUserResult {
+  switch (accountAccess.status) {
+    case "active":
+      return {
+        status: "ready",
+        profile: {
+          id: accountAccess.profile.id,
+          displayName: accountAccess.profile.displayName,
+          accountStatus: accountAccess.profile.accountStatus,
+          version: accountAccess.profile.version,
+        },
+      };
+    case "anonymous":
+      return { status: "anonymous" };
+    case "missing_profile":
+      return { status: "missing_profile" };
+    case "inactive":
+    case "unavailable":
+      return { status: "unavailable" };
+  }
 }
