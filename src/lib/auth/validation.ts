@@ -78,6 +78,18 @@ export function validateTotpCode(value: unknown): string | null {
 }
 
 export function validateMfaFactorId(value: unknown): string | null {
+  return validateUuid(value);
+}
+
+export function validateAuthUserId(value: unknown): string | null {
+  return validateUuid(value);
+}
+
+export function validateCommandId(value: unknown): string | null {
+  return validateUuid(value);
+}
+
+export function validateAdminRoleReason(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -85,8 +97,26 @@ export function validateMfaFactorId(value: unknown): string | null {
   const normalized = value.trim();
 
   if (
-    normalized.length > 64 ||
-    CONTROL_CHARACTER_PATTERN.test(normalized) ||
+    normalized.length < 1 ||
+    normalized.length > 500 ||
+    CONTROL_CHARACTER_PATTERN.test(normalized)
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function validateUuid(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  if (
+    value.length > 64 ||
+    CONTROL_CHARACTER_PATTERN.test(value) ||
     !UUID_PATTERN.test(normalized)
   ) {
     return null;

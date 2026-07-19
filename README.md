@@ -2,8 +2,8 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Auth identity, password recovery guard, and local ADMIN MFA
-boundary scaffold.
+Current phase: Auth identity, password recovery guard, local ADMIN MFA
+boundary, and local ADMIN role command scaffold.
 
 ## Stack
 
@@ -128,10 +128,43 @@ Run the local auth route integration script after starting local Supabase, reset
 npm run test:auth:routes:local
 ```
 
-ADMIN role provisioning APIs, MFA factor removal UI, recovery codes,
-break-glass recovery, current-password change, service-role application
-access, remote Supabase, and production database workflows are still not
-implemented.
+MFA factor removal UI, recovery codes, break-glass recovery, current-password
+change, service-role application access, remote Supabase, and production
+database workflows are still not implemented.
+
+## ADMIN Role Commands
+
+ADMIN grant and revoke commands are available for local AAL2 administrators:
+
+```text
+GET /admin/roles
+POST /api/v1/admin/roles/grant
+POST /api/v1/admin/roles/revoke
+```
+
+The database is the final authorization boundary. The command functions require
+the current user to be an ACTIVE ADMIN with an AAL2 JWT, use a global
+transaction advisory lock, and use caller-supplied command IDs for idempotent
+replay. Reusing a command ID with a different actor, action, target, or reason
+is rejected as a conflict.
+
+`private.admin_role_audit_events` stores immutable append-only APPLIED and NOOP
+events. Direct browser reads and writes to `public.user_roles` remain blocked;
+audit reads go through the AAL2 ADMIN-only RPC
+`public.list_admin_role_audit_events`.
+
+The `/admin/roles` page intentionally accepts a target user UUID from a trusted
+operator. User lookup, email search, initial production ADMIN bootstrap,
+break-glass recovery, service-role application access, and financial admin
+commands are not implemented.
+
+Run the local ADMIN role command integration script after starting local
+Supabase, resetting the DB, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:auth:admin-roles:local
+```
 
 ## ADMIN MFA Boundary
 
@@ -230,7 +263,8 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Real Supabase project connection
 - Complete Auth proxy session policy
 - Auth callback for hosted OAuth or remote flows
-- ADMIN role management
+- Initial production ADMIN bootstrap
+- User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
 - Ledger
 - Financial features

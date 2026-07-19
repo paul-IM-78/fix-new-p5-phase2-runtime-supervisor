@@ -97,8 +97,59 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      grant_admin_role: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_target_user_id: string
+        }
+        Returns: {
+          command_id: string
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+          role_record_id: string
+          target_user_id: string
+        }[]
+      }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_aal2: { Args: never; Returns: boolean }
+      list_admin_role_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          command_id: string
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previously_active: boolean
+          reason: string
+          resulting_active: boolean
+          role: string
+          role_record_id: string
+          role_version: number
+          target_account_status: string
+          target_user_id: string
+        }[]
+      }
+      revoke_admin_role: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_target_user_id: string
+        }
+        Returns: {
+          command_id: string
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+          role_record_id: string
+          target_user_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

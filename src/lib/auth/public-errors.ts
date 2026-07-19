@@ -23,6 +23,12 @@ export type PublicAuthErrorCode =
   | "mfa_unavailable"
   | "mfa_already_enrolled"
   | "mfa_enrollment_failed"
+  | "admin_role_invalid_input"
+  | "admin_role_target_not_found"
+  | "admin_role_target_inactive"
+  | "admin_role_command_conflict"
+  | "admin_role_self_revoke_forbidden"
+  | "admin_role_unavailable"
   | "request_rejected"
   | "auth_unavailable";
 
@@ -65,6 +71,13 @@ const PUBLIC_AUTH_ERROR_MESSAGES: Record<PublicAuthErrorCode, string> = {
   mfa_already_enrolled: "이미 등록된 인증 앱이 있습니다.",
   mfa_enrollment_failed:
     "인증 앱 등록을 시작할 수 없습니다. 다시 시도해 주세요.",
+  admin_role_invalid_input: "관리자 역할 요청 값을 확인해 주세요.",
+  admin_role_target_not_found: "대상 계정을 찾을 수 없습니다.",
+  admin_role_target_inactive: "활성 계정에만 관리자 역할을 부여할 수 있습니다.",
+  admin_role_command_conflict: "이미 다른 내용으로 처리된 명령입니다.",
+  admin_role_self_revoke_forbidden: "자신의 관리자 역할은 취소할 수 없습니다.",
+  admin_role_unavailable:
+    "관리자 역할 명령을 처리할 수 없습니다. 다시 시도해 주세요.",
   request_rejected: "요청을 처리할 수 없습니다.",
   auth_unavailable:
     "인증 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",

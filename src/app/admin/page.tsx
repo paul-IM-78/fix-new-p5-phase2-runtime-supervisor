@@ -83,13 +83,19 @@ export default async function AdminPage() {
           <h2 className="text-base font-semibold">{displayName}</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
             Administrative product features are intentionally not
-            implemented in this phase. User management, role management,
-            audit logs, balances, assets, staking, and financial commands
-            remain out of scope.
+            implemented in this phase. Role grant and revoke commands are
+            available on a dedicated AAL2 page; balances, assets, staking,
+            and financial commands remain out of scope.
           </p>
         </section>
 
         <div className="flex flex-wrap gap-3">
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white"
+            href="/admin/roles"
+          >
+            Role commands
+          </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
             href="/account"
