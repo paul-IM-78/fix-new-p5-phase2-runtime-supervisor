@@ -37,6 +37,31 @@ npm run build
 npm run start
 ```
 
+## Supabase Local
+
+Docker Engine is required for the local Supabase stack. The CLI is installed as a project dev dependency and should be run through npm scripts or `npx supabase`.
+
+```bash
+npm run supabase:start
+npm run supabase:status
+npm run db:reset:local
+npm run db:lint:local
+npm run supabase:stop
+```
+
+This project uses local Supabase ports in the `557xx` range to avoid collisions with other local projects:
+
+```text
+API: http://127.0.0.1:55721
+Database: 127.0.0.1:55722
+Studio: http://127.0.0.1:55723
+Mailpit: http://127.0.0.1:55724
+```
+
+Local app credentials belong in `.env.local`, which is ignored by Git and must not be committed. The app uses only the local API URL and local anon key. Service-role keys, database URLs, JWT secrets, and production credentials are not application configuration in this phase.
+
+Migrations are forward-only and live under `supabase/migrations`. Remote Supabase link, production migration, Auth UI, roles, RLS, and service-role access are not implemented yet.
+
 ## Health Route
 
 ```text

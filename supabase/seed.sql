@@ -1,0 +1,4 @@
+-- Local development seed.
+-- Schema changes belong in supabase/migrations.
+-- QA users, assets, projects, and ledger fixtures will be added
+-- only after their schemas and policies are approved.
