@@ -2,7 +2,7 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Supabase client boundary scaffold.
+Current phase: Supabase proxy cookie boundary scaffold.
 
 ## Stack
 
@@ -57,10 +57,19 @@ The route validates server runtime configuration and public Supabase placeholder
 
 - Browser client scaffold: `src/lib/supabase/client.ts`
 - Server client scaffold: `src/lib/supabase/server.ts`
+- Proxy cookie refresh scaffold: `src/proxy.ts`
 - Public environment validator: `src/lib/config/public-env.ts`
 - Server-only environment validator: `src/server/config/env.ts`
 
 Client components may use the browser client scaffold. Server components, route handlers, and future server actions may use the server client scaffold. Client components must not import server-only modules.
+
+## Auth Proxy Boundary
+
+Next.js 16 Proxy is scaffolded to synchronize Supabase auth cookies between the request and response and to call `getClaims()` early in the request lifecycle.
+
+The proxy is not the final authorization layer. It does not decide user identity, roles, account state, financial command permissions, RLS policy outcomes, or database business rules. Those checks belong in later route handlers, server guards, and database policies.
+
+The proxy matcher excludes the liveness and configuration readiness routes, Next.js static assets, image optimization assets, the favicon, and common static file extensions. Real sign up, login, logout, callback, protected redirects, profile, role, and MFA flows are not implemented yet.
 
 ## Repository Boundary
 
@@ -82,7 +91,7 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 
 - Real Supabase project connection
 - Auth
-- Auth proxy and session refresh
+- Complete Auth proxy session policy
 - Sign up and login
 - Auth callback
 - Database
