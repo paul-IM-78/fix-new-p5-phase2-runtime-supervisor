@@ -62,6 +62,24 @@ Local app credentials belong in `.env.local`, which is ignored by Git and must n
 
 Migrations are forward-only and live under `supabase/migrations`. Remote Supabase link, production migration, Auth UI, roles, RLS, and service-role access are not implemented yet.
 
+## Auth Identity Schema
+
+The local database now includes the first Auth identity migration:
+
+- `public.profiles` stores the application identity row for each Supabase Auth user.
+- `public.user_roles` stores role grant history and creates one active `USER` role during provisioning.
+- An `auth.users` insert trigger provisions the profile and default role.
+- Auth metadata is not trusted for account status, roles, permissions, or admin state.
+- Profile self-read RLS is enabled; browser profile writes and direct role reads are blocked.
+
+Run the local database test suite with:
+
+```bash
+npm run db:test:local
+```
+
+Auth UI, login, callbacks, ADMIN role management, service-role application access, remote Supabase, and production database workflows are still not implemented.
+
 ## Health Route
 
 ```text
@@ -119,9 +137,6 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Complete Auth proxy session policy
 - Sign up and login
 - Auth callback
-- Database
-- Row-Level Security
-- Profiles and roles
 - Ledger
 - Financial features
 - Production deployment

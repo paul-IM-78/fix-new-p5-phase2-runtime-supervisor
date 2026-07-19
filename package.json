@@ -12,6 +12,7 @@
     "supabase:status": "supabase status",
     "db:reset:local": "supabase db reset --local",
     "db:lint:local": "supabase db lint --local --fail-on error",
+    "db:test:local": "supabase test db --local",
     "db:migration:new": "supabase migration new"
   },
   "dependencies": {
