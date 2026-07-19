@@ -13,6 +13,7 @@
     "db:reset:local": "supabase db reset --local",
     "db:lint:local": "supabase db lint --local --fail-on error",
     "db:test:local": "supabase test db --local",
+    "db:types:local": "supabase gen types typescript --local --schema public > src/types/database.types.ts",
     "db:migration:new": "supabase migration new"
   },
   "dependencies": {

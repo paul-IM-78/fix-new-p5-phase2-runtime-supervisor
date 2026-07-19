@@ -46,6 +46,8 @@ npm run supabase:start
 npm run supabase:status
 npm run db:reset:local
 npm run db:lint:local
+npm run db:test:local
+npm run db:types:local
 npm run supabase:stop
 ```
 
@@ -60,7 +62,7 @@ Mailpit: http://127.0.0.1:55724
 
 Local app credentials belong in `.env.local`, which is ignored by Git and must not be committed. The app uses only the local API URL and local anon key. Service-role keys, database URLs, JWT secrets, and production credentials are not application configuration in this phase.
 
-Migrations are forward-only and live under `supabase/migrations`. Remote Supabase link, production migration, Auth UI, roles, RLS, and service-role access are not implemented yet.
+Migrations are forward-only and live under `supabase/migrations`. Remote Supabase link, production migration, ADMIN management, financial schemas, and service-role application access are not implemented yet.
 
 ## Auth Identity Schema
 
@@ -78,7 +80,34 @@ Run the local database test suite with:
 npm run db:test:local
 ```
 
-Auth UI, login, callbacks, ADMIN role management, service-role application access, remote Supabase, and production database workflows are still not implemented.
+Generate local public database types with:
+
+```bash
+npm run db:types:local
+```
+
+The generated file is `src/types/database.types.ts` and is created from the local public schema only.
+
+## Auth Web Flow
+
+Local email confirmation is enabled through Mailpit and a custom confirmation template. The email link opens `/auth/confirm` and does not consume the token on GET; the user confirms with a POST button.
+
+Routes:
+
+- `GET /auth/sign-up`
+- `POST /api/v1/auth/sign-up`
+- `GET /auth/check-email`
+- `GET /auth/confirm`
+- `POST /api/v1/auth/confirm`
+- `GET /auth/verified`
+- `GET /auth/sign-in`
+- `POST /api/v1/auth/sign-in`
+- `POST /api/v1/auth/sign-out`
+- `GET /account`
+
+Auth POST routes require same-origin form submissions, use safe redirect allowlists, and do not expose raw Supabase errors. `/account` is the first protected page and reads the signed-in user's own profile through RLS.
+
+Password reset, ADMIN role management, MFA, service-role application access, remote Supabase, and production database workflows are still not implemented.
 
 ## Health Route
 
@@ -133,10 +162,11 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 ## Not Implemented Yet
 
 - Real Supabase project connection
-- Auth
 - Complete Auth proxy session policy
-- Sign up and login
-- Auth callback
+- Password reset
+- Auth callback for hosted OAuth or remote flows
+- ADMIN role management
+- MFA
 - Ledger
 - Financial features
 - Production deployment

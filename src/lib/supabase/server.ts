@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import { getServerEnv } from "@/server/config/env";
+import type { Database } from "@/types/database.types";
 
 const COOKIE_WRITE_CONTEXT_PATTERNS = [
   "Cookies can only be modified",
@@ -15,7 +16,7 @@ export async function createServerSupabaseClient() {
   const env = getServerEnv();
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     env.supabaseUrl,
     env.supabasePublishableKey,
     {

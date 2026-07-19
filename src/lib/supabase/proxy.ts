@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getPublicEnv } from "@/lib/config/public-env";
+import type { Database } from "@/types/database.types";
 
 export async function updateSession(
   request: NextRequest,
@@ -12,7 +13,7 @@ export async function updateSession(
   });
 
   // Proxy synchronizes auth cookies only; route guards own authorization.
-  const supabase = createServerClient(
+  const supabase = createServerClient<Database>(
     env.supabaseUrl,
     env.supabasePublishableKey,
     {
