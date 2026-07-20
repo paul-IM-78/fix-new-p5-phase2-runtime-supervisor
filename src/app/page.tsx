@@ -14,8 +14,10 @@ export default function Home() {
             </h1>
             <p className="max-w-2xl text-base leading-7 text-zinc-600">
               Managed wallet application foundation with local Supabase
-              email authentication. Financial features, staking products,
-              and production connectivity are not implemented yet.
+              email authentication. Signed-in users can review their
+              integrated profile, wallet, and catalog state on the
+              dashboard. Financial product execution and production
+              connectivity are not implemented yet.
             </p>
           </div>
           <nav className="flex flex-wrap gap-3">
@@ -30,6 +32,12 @@ export default function Home() {
               href="/auth/sign-in"
             >
               Sign in
+            </Link>
+            <Link
+              className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+              href="/dashboard"
+            >
+              Dashboard
             </Link>
             <Link
               className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
@@ -56,10 +64,11 @@ export default function Home() {
             </p>
           </div>
           <div className="border border-zinc-200 p-5">
-            <h2 className="text-base font-semibold">Out of scope</h2>
+            <h2 className="text-base font-semibold">Phase 2 boundary</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              Password reset, ADMIN management, MFA, balances, assets, ledger,
-              and staking flows remain future work.
+              Account guard, admin command boundaries, managed wallet state,
+              and catalog reads are in place. Phase 3 ledger and financial
+              operations remain future work.
             </p>
           </div>
         </section>

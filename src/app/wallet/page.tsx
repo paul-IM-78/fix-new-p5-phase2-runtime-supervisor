@@ -10,7 +10,7 @@ export default async function WalletPage() {
   const result = await getCurrentWallet();
 
   if (result.status === "anonymous") {
-    redirect("/auth/sign-in?next=/account");
+    redirect("/auth/sign-in?next=/wallet");
   }
 
   if (result.status === "inactive_profile") {
@@ -35,17 +35,19 @@ export default async function WalletPage() {
     <main className="min-h-screen bg-white px-6 py-10 text-zinc-950">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8">
         <header className="flex flex-col gap-3 border-b border-zinc-200 pb-6">
-          <Link className="text-sm text-zinc-600" href="/account">
-            Account
-          </Link>
+          <nav className="flex flex-wrap gap-3 text-sm text-zinc-600">
+            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/account">Account</Link>
+            <Link href="/catalog">Catalog</Link>
+          </nav>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
               Managed wallet account
             </h1>
             <p className="mt-2 text-sm leading-6 text-zinc-600">
-              Operational wallet-account state only. Financial amounts,
-              wallet identifiers, transaction operations, and reward
-              positions are not implemented in this phase.
+              Operational wallet-account state only. Financial execution
+              details and credential material are not implemented in this
+              phase.
             </p>
           </div>
         </header>
@@ -74,6 +76,12 @@ export default async function WalletPage() {
         </section>
 
         <div className="flex flex-wrap gap-3">
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/dashboard"
+          >
+            Dashboard
+          </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
             href="/catalog"

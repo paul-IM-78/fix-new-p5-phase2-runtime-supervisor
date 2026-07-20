@@ -2,10 +2,9 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Auth identity, password recovery guard, local ADMIN MFA
-boundary, local ADMIN role command scaffold, and Phase 2 domain schema
-baseline for projects, supported assets, project token history, and managed
-wallet account containers.
+Current phase: Phase 2 user dashboard and local closeout boundary for auth,
+ADMIN AAL2 commands, project and asset metadata, managed wallet account
+state, and active catalog reads.
 
 ## Stack
 
@@ -38,6 +37,7 @@ npm run dev
 npm run lint
 npm run build
 npm run start
+npm run test:phase2:closeout:local
 ```
 
 ## Supabase Local
@@ -290,6 +290,7 @@ ACTIVE users can read current non-financial catalog metadata and their own
 managed wallet account state:
 
 ```text
+GET /dashboard
 GET /catalog
 GET /wallet
 ```
@@ -297,6 +298,12 @@ GET /wallet
 Inactive profiles are blocked from catalog and wallet reads by both the
 central account guard and RLS. A user's own wallet row remains readable for
 ACTIVE, FROZEN, and CLOSED wallet states while the profile is ACTIVE.
+
+`/dashboard` combines the ACTIVE user's profile status, managed wallet account
+status, active project metadata, supported asset metadata, and current project
+token assignment in a single server-rendered view. It supports empty catalog
+states and displays wallet operational states without showing full UUIDs,
+credential material, or financial values.
 
 AAL2 ADMIN wallet status operations are available locally:
 
@@ -323,10 +330,18 @@ resetting the DB, and running the production Next.js server on
 npm run test:domain:wallet-status:local
 ```
 
-No balance, ledger, deposit, withdrawal, reward, APY, staking, wallet address,
-private key, mnemonic, client signing, on-chain transaction, service-role
-application client, remote Supabase, mainnet, or production connection is
-implemented.
+Run the full Phase 2 local closeout script after starting local Supabase,
+resetting the DB, building, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:phase2:closeout:local
+```
+
+No balance, ledger, deposit, withdrawal, reward, APY, staking product,
+blockchain address, private key, mnemonic, client signing, on-chain
+transaction, service-role application client, remote Supabase, mainnet, or
+production connection is implemented.
 
 ## Health Route
 
@@ -386,7 +401,6 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Initial production ADMIN bootstrap
 - User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
-- Project and supported asset administrator commands
 - Financial ledger and balance calculation
 - Ledger
 - Financial features

@@ -15,7 +15,7 @@ export default async function CatalogPage() {
   const catalog = await getCurrentCatalog();
 
   if (catalog.status === "anonymous") {
-    redirect("/auth/sign-in?next=/account");
+    redirect("/auth/sign-in?next=/catalog");
   }
 
   if (catalog.status === "inactive_profile") {
@@ -34,17 +34,19 @@ export default async function CatalogPage() {
     <main className="min-h-screen bg-white px-6 py-10 text-zinc-950">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         <header className="flex flex-col gap-3 border-b border-zinc-200 pb-6">
-          <Link className="text-sm text-zinc-600" href="/account">
-            Account
-          </Link>
+          <nav className="flex flex-wrap gap-3 text-sm text-zinc-600">
+            <Link href="/dashboard">Dashboard</Link>
+            <Link href="/account">Account</Link>
+            <Link href="/wallet">Wallet</Link>
+          </nav>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
               Current catalog
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
               Active project and supported asset metadata visible to ACTIVE
-              accounts. Financial amounts and transaction operations are not
-              implemented here.
+              accounts. Financial execution features are not implemented
+              here.
             </p>
           </div>
         </header>
@@ -82,7 +84,7 @@ function ProjectSection({
               {projects.map((project) => (
                 <tr
                   className="border-b border-zinc-100 align-top"
-                  key={project.projectId}
+                  key={project.projectCode}
                 >
                   <td className="py-3 pr-4 font-mono text-xs">
                     {project.projectCode}
@@ -128,7 +130,7 @@ function AssetSection({ assets }: { assets: CurrentCatalogAsset[] }) {
               {assets.map((asset) => (
                 <tr
                   className="border-b border-zinc-100 align-top"
-                  key={asset.assetId}
+                  key={asset.assetCode}
                 >
                   <td className="py-3 pr-4">
                     <div className="font-medium">{asset.assetCode}</div>
@@ -142,7 +144,7 @@ function AssetSection({ assets }: { assets: CurrentCatalogAsset[] }) {
                   <td className="py-3 pr-4 font-mono text-xs">
                     {asset.mintAddress
                       ? shortIdentifier(asset.mintAddress)
-                      : "None"}
+                      : "Native asset"}
                   </td>
                 </tr>
               ))}
@@ -180,7 +182,7 @@ function AssignmentSection({
               {assignments.map((assignment) => (
                 <tr
                   className="border-b border-zinc-100 align-top"
-                  key={assignment.assignmentId}
+                  key={`${assignment.projectCode ?? "project"}-${assignment.assetCode ?? assignment.assetSymbol ?? "asset"}-${assignment.assignedAt}`}
                 >
                   <td className="py-3 pr-4">
                     {assignment.projectCode ?? shortUuid(assignment.projectId)}
