@@ -3,8 +3,9 @@
 Managed staking wallet web application baseline.
 
 Current phase: Phase 3 double-entry ledger with AAL2 administrator Opening
-Balance commands, exact Opening reversal, immutable financial audit,
-calculated balance views, and read-only user/admin balance summaries.
+Balance commands, exact Opening reversal, local manual deposit request state
+machine commands, immutable financial audit, calculated balance views, and
+read-only user/admin balance summaries.
 
 ## Stack
 
@@ -40,6 +41,7 @@ npm run start
 npm run test:ledger:core:local
 npm run test:ledger:opening-corrections:local
 npm run test:phase2:closeout:local
+npm run test:ledger:deposits:local
 ```
 
 ## Supabase Local
@@ -419,10 +421,57 @@ set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
 npm run test:ledger:opening-corrections:local
 ```
 
-Opening replacement after reversal, generic manual journals, real deposit,
-withdrawal, staking, reward, user balance UI, real asset seed data, service-role
-application access, remote Supabase, mainnet, and production connectivity
-remain unimplemented.
+Opening replacement after reversal, generic manual journals, real asset seed
+data, service-role application access, remote Supabase, mainnet, and
+production connectivity remain unimplemented.
+
+## Deposit Request State Machine
+
+Local manual deposit request commands are available for Phase 3 ledger
+validation:
+
+```text
+GET /deposits
+POST /api/v1/deposits/create
+POST /api/v1/deposits/cancel
+GET /admin/deposits
+POST /api/v1/admin/deposits/confirm
+POST /api/v1/admin/deposits/cancel
+```
+
+User deposit requests are local-only operational records. The app does not
+show or store a blockchain destination, transaction ID, signature, webhook,
+mainnet RPC, private key, mnemonic, or client signing path.
+
+The database remains the final authorization boundary. User create and cancel
+commands require an ACTIVE profile and caller-owned managed wallet. Admin
+confirm and cancel commands require ACTIVE ADMIN plus current AAL2 inside
+PostgreSQL. Commands use expected versions, caller-supplied command IDs,
+idempotent replay, conflict detection, and an append-only
+`private.deposit_command_audit_events` table.
+
+Request creation posts debit `SYSTEM_DEPOSIT_CLEARING` and credit
+`USER_PENDING_DEPOSIT`. User/admin cancellation reverses those buckets.
+Admin confirmation posts four lines: clearing to custody and pending deposit
+to available balance.
+
+The public write RPC names use `*_user_funding_request` to avoid generic
+public financial write naming while the user-facing product copy remains
+Deposit Requests.
+
+Run the local Deposit Request integration script after starting local
+Supabase, resetting the DB, and building. If `APP_ORIGIN` is not provided, the
+script starts a temporary production Next.js server on `http://localhost:3010`
+and stops it after the smoke. To test an already running production server,
+set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
+
+```bash
+npm run test:ledger:deposits:local
+```
+
+Real deposit settlement, withdrawal, staking, reward, automatic confirmation,
+chain indexing, service-role application access, remote Supabase, mainnet, and
+production connectivity remain unimplemented.
 
 ## Health Route
 

@@ -22,7 +22,8 @@
     "test:domain:wallet-status:local": "node scripts/domain/wallet-account-status.local.mjs",
     "test:phase2:closeout:local": "node scripts/phase/phase2-closeout.local.mjs",
     "test:ledger:core:local": "node scripts/ledger/ledger-core.local.mjs",
-    "test:ledger:opening-corrections:local": "node scripts/ledger/opening-balance-corrections.local.mjs"
+    "test:ledger:opening-corrections:local": "node scripts/ledger/opening-balance-corrections.local.mjs",
+    "test:ledger:deposits:local": "node scripts/ledger/deposit-state-machine.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

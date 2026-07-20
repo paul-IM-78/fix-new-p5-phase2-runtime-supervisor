@@ -87,7 +87,8 @@ export default async function AdminPage() {
             asset lifecycle commands, managed wallet account status
             commands, and one-time ledger Opening Balance commands each use
             dedicated AAL2 pages. Generic manual journals, deposits,
-            withdrawals, staking, and rewards remain out of scope.
+            deposit request commands each use dedicated pages. Withdrawals,
+            staking, and rewards remain out of scope.
           </p>
         </section>
 
@@ -115,6 +116,12 @@ export default async function AdminPage() {
             href="/admin/ledger"
           >
             Ledger commands
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/deposits"
+          >
+            Deposit commands
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"

@@ -78,6 +78,7 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             <DashboardLink href="/account">Account</DashboardLink>
             <DashboardLink href="/catalog">Catalog</DashboardLink>
             <DashboardLink href="/wallet">Wallet</DashboardLink>
+            <DashboardLink href="/deposits">Deposits</DashboardLink>
           </nav>
         </header>
 

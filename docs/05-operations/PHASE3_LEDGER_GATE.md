@@ -27,6 +27,9 @@ gate remains PASS.
 - Reversal one-time limit.
 - Immutable financial administrator audit.
 - AAL2 admin ledger summary read RPCs.
+- Local manual deposit request state machine.
+- Deposit create, confirm, and cancel postings through the private Posting Primitive.
+- Immutable deposit command audit.
 - Generic manual journal absent.
 - Text amount return values.
 - Service-role application client absent.
@@ -38,8 +41,6 @@ gate remains PASS.
 
 The following tasks must wait for this gate:
 
-- Deposit request schema.
-- Deposit confirmation command.
 - Withdrawal request.
 - Withdrawal reservation.
 - Staking lock.
@@ -52,6 +53,8 @@ The following tasks must wait for this gate:
 - Generic public financial write RPC.
 - Arbitrary manual ledger correction.
 - Opening Balance replacement after reversal.
+- Real deposit settlement or automatic confirmation.
+- Blockchain deposit addresses or transaction IDs.
 - Browser ledger writes.
 - JavaScript `Number` for posting amounts.
 - Floating point or PostgreSQL `money` financial storage.
@@ -64,7 +67,14 @@ The following tasks must wait for this gate:
 ## Current Residual
 
 P3-T02 intentionally adds a narrow AAL2 administrator Opening Balance command
-and admin ledger read RPCs. Earlier P3-T01 wording that described all public
-financial write RPCs as absent now means generic/manual public financial write
-RPCs remain absent. Deposits, withdrawals, staking, rewards, and user balance
-UI remain prohibited until later phases.
+and admin ledger read RPCs. P3-T03 intentionally adds local manual deposit
+request commands and read RPCs. Earlier P3-T01 wording that described all
+public financial write RPCs as absent now means generic/manual public
+financial write RPCs remain absent.
+
+The P3-T03 public write RPC names use `*_user_funding_request` rather than
+generic `deposit`, `manual`, or `posting` names. The workflow is still
+user-facing Deposit Requests, but no real settlement, deposit address,
+transaction ID, chain verification, automatic confirmation, withdrawal,
+staking, reward, service-role application client, remote Supabase, mainnet, or
+production path is implemented.

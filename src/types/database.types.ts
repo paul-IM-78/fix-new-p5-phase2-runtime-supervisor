@@ -264,6 +264,28 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_cancel_user_funding_request: {
+        Args: {
+          p_command_id: string
+          p_deposit_request_id: string
+          p_reason: string
+          p_request_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          deposit_request_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+        }[]
+      }
       assign_project_token: {
         Args: {
           p_asset_id: string
@@ -281,6 +303,49 @@ export type Database = {
           project_id: string
           replayed: boolean
           result_code: string
+        }[]
+      }
+      cancel_current_user_funding_request: {
+        Args: {
+          p_command_id: string
+          p_deposit_request_id: string
+          p_request_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          deposit_request_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+        }[]
+      }
+      confirm_user_funding_request: {
+        Args: {
+          p_command_id: string
+          p_deposit_request_id: string
+          p_reason: string
+          p_request_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          deposit_request_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
         }[]
       }
       create_project: {
@@ -326,6 +391,30 @@ export type Database = {
           result_code: string
         }[]
       }
+      create_user_funding_request: {
+        Args: {
+          p_asset_expected_version: number
+          p_asset_id: string
+          p_command_id: string
+          p_units: string
+          p_wallet_account_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          deposit_request_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+        }[]
+      }
       grant_admin_role: {
         Args: {
           p_command_id: string
@@ -344,6 +433,32 @@ export type Database = {
       }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_aal2: { Args: never; Returns: boolean }
+      list_admin_deposit_requests: {
+        Args: { p_before_deposit_request_id?: string; p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          canceled_at: string
+          canceled_by: string
+          cancellation_actor_type: string
+          cancellation_journal_id: string
+          confirmation_journal_id: string
+          confirmed_at: string
+          confirmed_by: string
+          decimals: number
+          deposit_request_id: string
+          profile_status: string
+          request_journal_id: string
+          requested_at: string
+          requested_units: string
+          status: string
+          symbol: string
+          target_user_id: string
+          version: number
+          wallet_account_id: string
+          wallet_status: string
+        }[]
+      }
       list_admin_ledger_journals: {
         Args: { p_before_journal_id?: string; p_limit?: number }
         Returns: {
@@ -462,6 +577,27 @@ export type Database = {
           wallet_status: string
         }[]
       }
+      list_current_user_deposit_requests: {
+        Args: { p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          canceled_at: string
+          cancellation_actor_type: string
+          cancellation_journal_id: string
+          confirmation_journal_id: string
+          confirmed_at: string
+          decimals: number
+          deposit_request_id: string
+          request_journal_id: string
+          requested_at: string
+          requested_units: string
+          status: string
+          symbol: string
+          version: number
+          wallet_account_id: string
+        }[]
+      }
       list_current_user_ledger_balances: {
         Args: never
         Returns: {
@@ -474,6 +610,27 @@ export type Database = {
           pending_withdrawal_units: string
           symbol: string
           total_liability_units: string
+        }[]
+      }
+      list_deposit_command_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_type: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          deposit_request_id: string
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previous_status: string
+          reason: string
+          resulting_journal_id: string
+          resulting_status: string
+          target_user_id: string
+          units_text: string
+          wallet_account_id: string
         }[]
       }
       list_domain_admin_audit_events: {

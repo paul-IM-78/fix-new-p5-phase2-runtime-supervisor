@@ -96,6 +96,12 @@ export default async function AccountPage() {
           >
             Wallet account
           </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/deposits"
+          >
+            Deposits
+          </Link>
           <form action="/api/v1/auth/sign-out" method="post">
             <button
               className="h-10 border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
