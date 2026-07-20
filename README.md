@@ -2,9 +2,9 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 3 double-entry ledger core boundary for exact atomic
-unit posting, immutable journals and entries, calculated balance views, and a
-current-user read-only balance RPC.
+Current phase: Phase 3 double-entry ledger with AAL2 administrator Opening
+Balance commands, exact Opening reversal, immutable financial audit,
+calculated balance views, and read-only user/admin balance summaries.
 
 ## Stack
 
@@ -38,6 +38,7 @@ npm run lint
 npm run build
 npm run start
 npm run test:ledger:core:local
+npm run test:ledger:opening-corrections:local
 npm run test:phase2:closeout:local
 ```
 
@@ -358,8 +359,8 @@ Phase 3 starts with a private PostgreSQL double-entry ledger core:
 
 Financial amounts at application and RPC boundaries must be decimal digit
 strings. JavaScript `Number`, PostgreSQL `money`, floating point values,
-fractional units, browser posting, public financial write RPCs, and direct
-browser ledger table access are prohibited.
+fractional units, browser posting, generic public financial write RPCs, and
+direct browser ledger table access are prohibited.
 
 Current user balance buckets:
 
@@ -380,6 +381,48 @@ npm run test:ledger:core:local
 The ledger core does not implement real deposit, withdrawal, staking, reward,
 balance UI, real asset seed data, mainnet, remote Supabase, service-role
 application access, private keys, mnemonics, or blockchain signing.
+
+## Opening Balance And Corrections
+
+AAL2 ADMIN Opening Balance commands are available locally for initial
+migration testing:
+
+```text
+GET /admin/ledger
+POST /api/v1/admin/ledger/opening-balance
+POST /api/v1/admin/ledger/reverse-opening
+```
+
+The database remains the final authorization boundary. Opening Balance requires
+an ACTIVE wallet, ACTIVE profile, ACTIVE asset, matching wallet and asset
+expected versions, an Atomic Units string, no previous ledger entries for that
+wallet and asset, and no previous APPLIED Opening for that wallet and asset.
+
+Opening posts debit `SYSTEM_CUSTODY` and credit `USER_AVAILABLE` through the
+private Posting Primitive. Exact reversal derives account, side, and units from
+the original immutable Opening Journal; administrators cannot enter arbitrary
+debit or credit lines.
+
+`private.financial_admin_audit_events` records immutable APPLIED and NOOP
+financial administrator events. The admin ledger page reads balances, journal
+summaries, and financial audit summaries through AAL2-only RPCs and does not
+expose request data, entry lines, email, metadata, cookies, tokens, MFA
+material, service-role credentials, or private ledger account IDs.
+
+Run the local Opening Balance integration script after starting local
+Supabase, resetting the DB, and building. If `APP_ORIGIN` is not provided, the
+script starts a temporary production Next.js server on `http://localhost:3010`
+and stops it after the smoke. To test an already running production server,
+set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
+
+```bash
+npm run test:ledger:opening-corrections:local
+```
+
+Opening replacement after reversal, generic manual journals, real deposit,
+withdrawal, staking, reward, user balance UI, real asset seed data, service-role
+application access, remote Supabase, mainnet, and production connectivity
+remain unimplemented.
 
 ## Health Route
 
@@ -443,6 +486,6 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Withdrawal reservation and fulfillment commands
 - Staking lock and reward commands
 - Balance UI
-- Financial features
+- Generic manual financial commands
 - Production deployment
 - Mainnet integration

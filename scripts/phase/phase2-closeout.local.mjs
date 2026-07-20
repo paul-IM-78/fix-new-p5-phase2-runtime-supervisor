@@ -6,11 +6,13 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const APP_ORIGIN = "http://localhost:3000";
+const LOCAL_SUPABASE_API_ORIGIN = "http://127.0.0.1:55721";
 const MAILPIT_ORIGIN = "http://127.0.0.1:55724";
 const DB_CONTAINER = "supabase_db_staking-wallet-web";
-const KONG_CONTAINER = "supabase_kong_staking-wallet-web";
 const PROJECT_LABEL = "staking-wallet-web";
 const NPM_EXEC_PATH = process.env.npm_execpath;
+const READINESS_ATTEMPTS_BEFORE_RESTART = 12;
+const READINESS_ATTEMPTS_AFTER_RESTART = 12;
 const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
@@ -121,37 +123,125 @@ async function runNpmScript(scriptName, label) {
 
 async function resetLocalDatabase(label) {
   await runNpmScriptWithoutReset("db:reset:local", label);
+  await waitForLocalSupabaseReadiness(`${label} readiness`);
+}
+
+async function waitForLocalSupabaseReadiness(label) {
+  const warmup = await waitForReadinessAttempts(
+    READINESS_ATTEMPTS_BEFORE_RESTART,
+  );
+
+  if (warmup.ready) {
+    pass(label);
+    return;
+  }
+
   await restartProjectKong();
-  await wait(3000);
-  await assertStatus("/api/v1/health", 200, "Health after reset");
-  await assertMailpitReady();
-  await assertDatabaseReady();
+
+  const afterRestart = await waitForReadinessAttempts(
+    READINESS_ATTEMPTS_AFTER_RESTART,
+  );
+
+  if (afterRestart.ready) {
+    pass(`${label} after bounded Kong restart`);
+    return;
+  }
+
+  throw new Error(`FAIL ${label} ${afterRestart.state}`);
+}
+
+async function waitForReadinessAttempts(attempts) {
+  let lastState = "not_checked";
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const status = await readLocalSupabaseReadiness();
+
+    if (status.ready) {
+      return status;
+    }
+
+    lastState = status.state;
+    await wait(Math.min(500 + attempt * 250, 2000));
+  }
+
+  return { ready: false, state: lastState };
+}
+
+async function readLocalSupabaseReadiness() {
+  const kong = await readProjectKongContainerName().catch(() => null);
+  const authStatus = await fetchStatus(
+    `${LOCAL_SUPABASE_API_ORIGIN}/auth/v1/health`,
+  );
+  const restStatus = await fetchStatus(`${LOCAL_SUPABASE_API_ORIGIN}/rest/v1/`);
+  const appHealthStatus = await fetchStatus(`${APP_ORIGIN}/api/v1/health`);
+  const appConfigStatus = await fetchStatus(
+    `${APP_ORIGIN}/api/v1/readiness/config`,
+  );
+  const mailStatus = await fetchStatus(`${MAILPIT_ORIGIN}/api/v1/messages`);
+  const databaseReady = await readDatabaseReady();
+  const ready =
+    Boolean(kong) &&
+    isKongUpstreamReady(authStatus) &&
+    isKongUpstreamReady(restStatus) &&
+    appHealthStatus === 200 &&
+    appConfigStatus === 200 &&
+    mailStatus === 200 &&
+    databaseReady;
+
+  return {
+    ready,
+    state: `kong:${kong ? "ok" : "missing"} auth:${authStatus} rest:${restStatus} app:${appHealthStatus}/${appConfigStatus} mail:${mailStatus} db:${databaseReady ? "ok" : "fail"}`,
+  };
 }
 
 async function restartProjectKong() {
-  await assertProjectKongContainer();
-  await execFileAsync("docker", ["restart", KONG_CONTAINER], {
+  const kongContainer = await readProjectKongContainerName();
+
+  await execFileAsync("docker", ["restart", kongContainer], {
     timeout: 30000,
     windowsHide: true,
   });
 }
 
-async function assertProjectKongContainer() {
+async function readProjectKongContainerName() {
   const { stdout } = await execFileAsync(
     "docker",
     [
-      "inspect",
-      "-f",
-      "{{ index .Config.Labels \"com.supabase.cli.project\" }}",
-      KONG_CONTAINER,
+      "ps",
+      "--format",
+      "{{.Names}}\t{{.Label \"com.supabase.cli.project\"}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.service\"}}",
     ],
     {
       timeout: 10000,
       windowsHide: true,
     },
   );
+  const containers = stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [name, supabaseProject, composeProject, composeService] =
+        line.split("\t");
 
-  assert(stdout.trim() === PROJECT_LABEL, "Project Kong container");
+      return {
+        name,
+        supabaseProject,
+        composeProject,
+        composeService,
+      };
+    })
+    .filter(
+      (container) =>
+        (container.composeService === "kong" ||
+          container.name === `supabase_kong_${PROJECT_LABEL}`) &&
+        (container.supabaseProject === PROJECT_LABEL ||
+          container.composeProject === PROJECT_LABEL),
+    );
+
+  assert(containers.length === 1, "Project Kong container scope");
+
+  return containers[0].name;
 }
 
 async function runNpmScriptWithoutReset(scriptName, label) {
@@ -883,6 +973,31 @@ async function assertStatus(path, status, label) {
 
   assert(response.status === status, label);
   assertNoSensitiveBody(body, label);
+}
+
+async function fetchStatus(url) {
+  try {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(2000),
+    });
+
+    return response.status;
+  } catch {
+    return 0;
+  }
+}
+
+async function readDatabaseReady() {
+  try {
+    return (await sqlScalar("select 'ready';")) === "ready";
+  } catch {
+    return false;
+  }
+}
+
+function isKongUpstreamReady(status) {
+  return status >= 200 && status < 500;
 }
 
 async function assertAuthRedirect(path, nextPath, label) {

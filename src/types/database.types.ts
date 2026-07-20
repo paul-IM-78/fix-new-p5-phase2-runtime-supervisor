@@ -344,6 +344,28 @@ export type Database = {
       }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_aal2: { Args: never; Returns: boolean }
+      list_admin_ledger_journals: {
+        Args: { p_before_journal_id?: string; p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          command_id: string
+          credit_total_units: string
+          debit_total_units: string
+          entry_count: number
+          initiator_type: string
+          initiator_user_id: string
+          journal_id: string
+          journal_type: string
+          posted_at: string
+          reason: string
+          reference_id: string
+          reference_type: string
+          reversal_journal_id: string
+          reversed: boolean
+          symbol: string
+        }[]
+      }
       list_admin_project_token_assignments: {
         Args: { p_include_retired?: boolean; p_limit?: number }
         Returns: {
@@ -422,6 +444,24 @@ export type Database = {
           wallet_status: string
         }[]
       }
+      list_admin_wallet_asset_ledger_balances: {
+        Args: { p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          available_units: string
+          decimals: number
+          locked_units: string
+          pending_deposit_units: string
+          pending_withdrawal_units: string
+          profile_status: string
+          symbol: string
+          target_user_id: string
+          total_liability_units: string
+          wallet_account_id: string
+          wallet_status: string
+        }[]
+      }
       list_current_user_ledger_balances: {
         Args: never
         Returns: {
@@ -454,6 +494,24 @@ export type Database = {
           reason: string
         }[]
       }
+      list_financial_admin_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          event_id: string
+          occurred_at: string
+          original_journal_id: string
+          outcome: string
+          reason: string
+          resulting_journal_id: string
+          target_user_id: string
+          units_text: string
+          wallet_account_id: string
+        }[]
+      }
       list_wallet_account_admin_audit_events: {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
@@ -469,6 +527,28 @@ export type Database = {
           resulting_status: string
           target_profile_status: string
           target_user_id: string
+          wallet_account_id: string
+        }[]
+      }
+      post_opening_balance: {
+        Args: {
+          p_asset_expected_version: number
+          p_asset_id: string
+          p_command_id: string
+          p_reason: string
+          p_units: string
+          p_wallet_account_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          posted_at: string
+          replayed: boolean
+          result_code: string
+          units: string
           wallet_account_id: string
         }[]
       }
@@ -489,6 +569,25 @@ export type Database = {
           project_id: string
           replayed: boolean
           result_code: string
+        }[]
+      }
+      reverse_opening_balance: {
+        Args: {
+          p_command_id: string
+          p_original_journal_id: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          original_journal_id: string
+          posted_at: string
+          replayed: boolean
+          result_code: string
+          reversal_journal_id: string
+          units: string
+          wallet_account_id: string
         }[]
       }
       revoke_admin_role: {

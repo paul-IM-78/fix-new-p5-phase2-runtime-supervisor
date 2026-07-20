@@ -1589,10 +1589,38 @@ select extensions.ok(
     join pg_namespace as namespaces
       on namespaces.oid = procedures.pronamespace
     where namespaces.nspname = 'public'
+      and procedures.proname !~* '^(list_|post_opening_balance$|reverse_opening_balance$)'
       and procedures.proname ~* '(post_ledger|ledger_post|ledger_journal|ledger_entry|deposit|withdraw|stake|reward)'
-      and procedures.proname <> 'list_current_user_ledger_balances'
-  ),
-  'no public financial write rpc exists'
+  )
+    and (
+      select prosecdef
+      from pg_proc
+      where oid = 'private.validate_ledger_journal_invariants()'::regprocedure
+    )
+    and coalesce(
+      (
+        select array_to_string(proconfig, ',')
+        from pg_proc
+        where oid = 'private.validate_ledger_journal_invariants()'::regprocedure
+      ),
+      ''
+    ) like '%search_path=""%'
+    and not has_function_privilege(
+      'public',
+      'private.validate_ledger_journal_invariants()'::regprocedure,
+      'execute'
+    )
+    and not has_function_privilege(
+      'anon',
+      'private.validate_ledger_journal_invariants()'::regprocedure,
+      'execute'
+    )
+    and not has_function_privilege(
+      'authenticated',
+      'private.validate_ledger_journal_invariants()'::regprocedure,
+      'execute'
+    ),
+  'generic public financial write RPCs stay absent and ledger invariant trigger is hardened'
 );
 
 select extensions.ok(

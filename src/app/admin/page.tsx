@@ -82,13 +82,12 @@ export default async function AdminPage() {
         <section className="border border-zinc-200 p-5">
           <h2 className="text-base font-semibold">{displayName}</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
-            Administrative product features are intentionally not
-            implemented in this phase. Role grant and revoke commands are
-            available on a dedicated AAL2 page. Project and supported asset
-            lifecycle commands are available on the catalog page. Managed
-            wallet account status commands are available on their own AAL2
-            page; balances, staking, and financial commands remain out of
-            scope.
+            Administrative product features are intentionally scoped by
+            phase. Role grant and revoke commands, project and supported
+            asset lifecycle commands, managed wallet account status
+            commands, and one-time ledger Opening Balance commands each use
+            dedicated AAL2 pages. Generic manual journals, deposits,
+            withdrawals, staking, and rewards remain out of scope.
           </p>
         </section>
 
@@ -110,6 +109,12 @@ export default async function AdminPage() {
             href="/admin/wallets"
           >
             Wallet commands
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/ledger"
+          >
+            Ledger commands
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
