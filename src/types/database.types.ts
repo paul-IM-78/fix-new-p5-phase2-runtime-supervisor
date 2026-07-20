@@ -42,6 +42,132 @@ export type Database = {
         }
         Relationships: []
       }
+      project_token_assignments: {
+        Row: {
+          asset_id: string
+          assigned_at: string
+          created_at: string
+          id: string
+          project_id: string
+          retired_at: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          asset_id: string
+          assigned_at?: string
+          created_at?: string
+          id?: string
+          project_id: string
+          retired_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          asset_id?: string
+          assigned_at?: string
+          created_at?: string
+          id?: string
+          project_id?: string
+          retired_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_token_assignments_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "supported_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_token_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_name: string
+          id: string
+          project_code: string
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_name: string
+          id?: string
+          project_code: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          id?: string
+          project_code?: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      supported_assets: {
+        Row: {
+          asset_code: string
+          asset_type: string
+          created_at: string
+          decimals: number
+          display_name: string
+          id: string
+          mint_address: string | null
+          network: string
+          status: string
+          symbol: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          asset_code: string
+          asset_type: string
+          created_at?: string
+          decimals: number
+          display_name: string
+          id?: string
+          mint_address?: string | null
+          network?: string
+          status?: string
+          symbol: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          asset_code?: string
+          asset_type?: string
+          created_at?: string
+          decimals?: number
+          display_name?: string
+          id?: string
+          mint_address?: string | null
+          network?: string
+          status?: string
+          symbol?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -87,6 +213,47 @@ export type Database = {
             foreignKeyName: "user_roles_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wallet_accounts: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          custody_model: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+          version: number
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          custody_model?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+          version?: number
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          custody_model?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wallet_accounts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },

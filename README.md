@@ -3,7 +3,9 @@
 Managed staking wallet web application baseline.
 
 Current phase: Auth identity, password recovery guard, local ADMIN MFA
-boundary, and local ADMIN role command scaffold.
+boundary, local ADMIN role command scaffold, and Phase 2 domain schema
+baseline for projects, supported assets, project token history, and managed
+wallet account containers.
 
 ## Stack
 
@@ -204,9 +206,45 @@ resetting the DB, and running the production Next.js server on
 npm run test:auth:admin-mfa:local
 ```
 
-Application ADMIN role grant and revoke APIs are intentionally not present.
-Local E2E tests grant and revoke the QA admin role directly through the local
-database only, then reset the database afterward.
+Direct ADMIN role mutation outside the AAL2 ADMIN command APIs is intentionally
+not present. Local E2E tests reset the database afterward.
+
+## Phase 2 Domain Schema
+
+The local database now includes the first non-financial domain schema:
+
+- `public.projects` stores project metadata and allows at most one `ACTIVE`
+  project across the system.
+- `public.supported_assets` stores SOLANA-scoped asset metadata for future
+  catalog use.
+- `public.project_token_assignments` stores current and historical project SPL
+  token assignment rows. Token replacement is modeled as retire plus insert.
+- `public.wallet_accounts` stores exactly one managed wallet account container
+  for each profile.
+
+New Supabase Auth signups provision this chain:
+
+```text
+auth.users
+public.profiles
+public.user_roles
+public.wallet_accounts
+```
+
+The schema deliberately does not include balances, amount columns, ledger
+entries, staking positions, APY, deposits, withdrawals, blockchain
+transactions, deposit addresses, withdrawal addresses, private keys,
+mnemonics, wallet addresses, or client signing. User balances are a later
+double-entry ledger concern, not a `wallet_accounts` column.
+
+No real SOL, USDT, project token, project, mint, or production catalog rows are
+seeded in this phase. Future AAL2 ADMIN command tasks will define how project
+and asset metadata is created, activated, audited, and retired.
+
+Authenticated browser clients may read only active catalog rows and their own
+wallet account through RLS. Browser direct insert, update, and delete access is
+blocked for the new domain tables. Service-role application access, remote
+Supabase, mainnet, and production workflows remain out of scope.
 
 ## Health Route
 
@@ -266,6 +304,8 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Initial production ADMIN bootstrap
 - User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
+- Project and supported asset administrator commands
+- Financial ledger and balance calculation
 - Ledger
 - Financial features
 - Production deployment
