@@ -4,8 +4,9 @@ Managed staking wallet web application baseline.
 
 Current phase: Phase 3 double-entry ledger with AAL2 administrator Opening
 Balance commands, exact Opening reversal, local manual deposit request state
-machine commands, immutable financial audit, calculated balance views, and
-read-only user/admin balance summaries.
+machine commands, local manual withdrawal request state machine commands,
+immutable financial audit, calculated balance views, and read-only user/admin
+balance summaries.
 
 ## Stack
 
@@ -42,6 +43,7 @@ npm run test:ledger:core:local
 npm run test:ledger:opening-corrections:local
 npm run test:phase2:closeout:local
 npm run test:ledger:deposits:local
+npm run test:ledger:withdrawals:local
 ```
 
 ## Supabase Local
@@ -473,6 +475,59 @@ Real deposit settlement, withdrawal, staking, reward, automatic confirmation,
 chain indexing, service-role application access, remote Supabase, mainnet, and
 production connectivity remain unimplemented.
 
+## Withdrawal Request State Machine
+
+Local manual withdrawal request commands are available for Phase 3 ledger
+validation:
+
+```text
+GET /withdrawals
+POST /api/v1/withdrawals/create
+POST /api/v1/withdrawals/cancel
+GET /admin/withdrawals
+POST /api/v1/admin/withdrawals/reserve
+POST /api/v1/admin/withdrawals/approve
+POST /api/v1/admin/withdrawals/cancel
+```
+
+User withdrawal requests are local-only operational records. The app does not
+show or store a destination address, transaction identifier, signature,
+webhook, mainnet RPC, private key, mnemonic, or client signing path.
+
+The database remains the final authorization boundary. User create and
+REQUESTED cancel commands require an ACTIVE profile and caller-owned managed
+wallet. Admin reserve, approve, and cancel commands require ACTIVE ADMIN plus
+current AAL2 inside PostgreSQL. Commands use expected versions,
+caller-supplied command IDs, idempotent replay, conflict detection, a
+withdrawal transaction advisory lock, deferred withdrawal invariants, and an
+append-only `private.withdrawal_command_audit_events` table.
+
+Request creation prechecks Available Atomic Units but posts no ledger journal.
+Admin reservation posts debit `USER_AVAILABLE` and credit
+`USER_PENDING_WITHDRAWAL`. Admin approval posts debit
+`USER_PENDING_WITHDRAWAL` and credit `SYSTEM_WITHDRAWAL_CLEARING`. Approval
+does not debit `SYSTEM_CUSTODY` and does not mean external payout settlement.
+Admin cancellation restores local available units from REQUESTED, RESERVED, or
+APPROVED states as defined by the state machine.
+
+The public write RPC names use `*_user_payout_request` to avoid generic public
+financial write naming while the user-facing product copy remains Withdrawal
+Requests.
+
+Run the local Withdrawal Request integration script after starting local
+Supabase, resetting the DB, and building. If `APP_ORIGIN` is not provided, the
+script starts a temporary production Next.js server on `http://localhost:3010`
+and stops it after the smoke. To test an already running production server,
+set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
+
+```bash
+npm run test:ledger:withdrawals:local
+```
+
+Actual payout settlement, custody reduction, partial approval, withdrawal
+addresses, chain indexing, staking, reward, service-role application access,
+remote Supabase, mainnet, and production connectivity remain unimplemented.
+
 ## Health Route
 
 ```text
@@ -531,8 +586,8 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Initial production ADMIN bootstrap
 - User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
-- Deposit request and confirmation commands
-- Withdrawal reservation and fulfillment commands
+- Real deposit settlement and automatic confirmation
+- Real withdrawal settlement, fulfillment, and custody reduction
 - Staking lock and reward commands
 - Balance UI
 - Generic manual financial commands

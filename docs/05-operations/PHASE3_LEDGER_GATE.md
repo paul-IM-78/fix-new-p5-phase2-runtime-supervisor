@@ -30,6 +30,14 @@ gate remains PASS.
 - Local manual deposit request state machine.
 - Deposit create, confirm, and cancel postings through the private Posting Primitive.
 - Immutable deposit command audit.
+- Local manual withdrawal request state machine.
+- Withdrawal request available-balance precheck with no request-time posting.
+- AAL2 administrator withdrawal reservation posting.
+- AAL2 administrator withdrawal approval posting.
+- Withdrawal approval leaves custody unchanged and moves value to clearing only.
+- User REQUESTED withdrawal cancellation.
+- Admin REQUESTED, RESERVED, and APPROVED withdrawal cancellation.
+- Immutable withdrawal command audit.
 - Generic manual journal absent.
 - Text amount return values.
 - Service-role application client absent.
@@ -42,7 +50,6 @@ gate remains PASS.
 The following tasks must wait for this gate:
 
 - Withdrawal request.
-- Withdrawal reservation.
 - Staking lock.
 - Reward posting.
 - User balance UI.
@@ -68,13 +75,19 @@ The following tasks must wait for this gate:
 
 P3-T02 intentionally adds a narrow AAL2 administrator Opening Balance command
 and admin ledger read RPCs. P3-T03 intentionally adds local manual deposit
-request commands and read RPCs. Earlier P3-T01 wording that described all
-public financial write RPCs as absent now means generic/manual public
-financial write RPCs remain absent.
+request commands and read RPCs. P3-T04 intentionally adds local manual
+withdrawal request, reservation, approval, cancellation, and read RPCs. Earlier
+P3-T01 wording that described all public financial write RPCs as absent now
+means generic/manual public financial write RPCs remain absent.
 
 The P3-T03 public write RPC names use `*_user_funding_request` rather than
 generic `deposit`, `manual`, or `posting` names. The workflow is still
 user-facing Deposit Requests, but no real settlement, deposit address,
-transaction ID, chain verification, automatic confirmation, withdrawal,
-staking, reward, service-role application client, remote Supabase, mainnet, or
-production path is implemented.
+transaction ID, chain verification, or automatic confirmation is implemented.
+
+The P3-T04 public write RPC names use `*_user_payout_request` rather than
+generic `withdraw`, `manual`, or `posting` names. The workflow is still
+user-facing Withdrawal Requests, but approval is not external settlement.
+There is no withdrawal address, transaction ID, chain execution, custody
+decrease, partial approval, staking, reward, service-role application client,
+remote Supabase, mainnet, or production path.

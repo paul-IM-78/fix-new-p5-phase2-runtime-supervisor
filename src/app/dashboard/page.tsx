@@ -79,6 +79,7 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             <DashboardLink href="/catalog">Catalog</DashboardLink>
             <DashboardLink href="/wallet">Wallet</DashboardLink>
             <DashboardLink href="/deposits">Deposits</DashboardLink>
+            <DashboardLink href="/withdrawals">Withdrawals</DashboardLink>
           </nav>
         </header>
 
@@ -296,7 +297,7 @@ function Detail({ label, value }: { label: string; value: string }) {
 function getWalletStatusCopy(status: ReadyDashboard["wallet"]["accountStatus"]) {
   switch (status) {
     case "ACTIVE":
-      return "The managed wallet account is active. Financial features are not implemented yet.";
+      return "The managed wallet account is active. Local ledger deposit and withdrawal request flows are available for controlled validation only.";
     case "FROZEN":
       return "An administrator has placed an operational freeze on this account. Current state is read only, and future financial mutations are blocked.";
     case "CLOSED":

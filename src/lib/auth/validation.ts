@@ -11,8 +11,10 @@ const SAFE_AUTH_NEXT_PATHS = new Set([
   "/catalog",
   "/wallet",
   "/deposits",
+  "/withdrawals",
   "/admin",
   "/admin/deposits",
+  "/admin/withdrawals",
 ]);
 
 export function normalizeEmail(value: unknown): string | null {

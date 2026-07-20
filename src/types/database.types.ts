@@ -286,6 +286,50 @@ export type Database = {
           wallet_account_id: string
         }[]
       }
+      admin_cancel_user_payout_request: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
+      approve_user_payout_request: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
       assign_project_token: {
         Args: {
           p_asset_id: string
@@ -324,6 +368,28 @@ export type Database = {
           status: string
           units: string
           wallet_account_id: string
+        }[]
+      }
+      cancel_current_user_payout_request: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
         }[]
       }
       confirm_user_funding_request: {
@@ -413,6 +479,30 @@ export type Database = {
           status: string
           units: string
           wallet_account_id: string
+        }[]
+      }
+      create_user_payout_request: {
+        Args: {
+          p_asset_expected_version: number
+          p_asset_id: string
+          p_command_id: string
+          p_units: string
+          p_wallet_account_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
         }[]
       }
       grant_admin_role: {
@@ -577,6 +667,35 @@ export type Database = {
           wallet_status: string
         }[]
       }
+      list_admin_withdrawal_requests: {
+        Args: { p_before_withdrawal_request_id?: string; p_limit?: number }
+        Returns: {
+          approval_journal_id: string
+          approved_at: string
+          approved_by: string
+          asset_code: string
+          asset_id: string
+          canceled_at: string
+          canceled_by: string
+          canceled_from_status: string
+          cancellation_actor_type: string
+          cancellation_journal_id: string
+          decimals: number
+          profile_status: string
+          requested_at: string
+          requested_units: string
+          reservation_journal_id: string
+          reserved_at: string
+          reserved_by: string
+          status: string
+          symbol: string
+          target_user_id: string
+          version: number
+          wallet_account_id: string
+          wallet_status: string
+          withdrawal_request_id: string
+        }[]
+      }
       list_current_user_deposit_requests: {
         Args: { p_limit?: number }
         Returns: {
@@ -610,6 +729,29 @@ export type Database = {
           pending_withdrawal_units: string
           symbol: string
           total_liability_units: string
+        }[]
+      }
+      list_current_user_withdrawal_requests: {
+        Args: { p_limit?: number }
+        Returns: {
+          approval_journal_id: string
+          approved_at: string
+          asset_code: string
+          asset_id: string
+          canceled_at: string
+          canceled_from_status: string
+          cancellation_actor_type: string
+          cancellation_journal_id: string
+          decimals: number
+          requested_at: string
+          requested_units: string
+          reservation_journal_id: string
+          reserved_at: string
+          status: string
+          symbol: string
+          version: number
+          wallet_account_id: string
+          withdrawal_request_id: string
         }[]
       }
       list_deposit_command_audit_events: {
@@ -687,6 +829,27 @@ export type Database = {
           wallet_account_id: string
         }[]
       }
+      list_withdrawal_command_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_type: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previous_status: string
+          reason: string
+          resulting_journal_id: string
+          resulting_status: string
+          target_user_id: string
+          units_text: string
+          wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
       post_opening_balance: {
         Args: {
           p_asset_expected_version: number
@@ -707,6 +870,28 @@ export type Database = {
           result_code: string
           units: string
           wallet_account_id: string
+        }[]
+      }
+      reserve_user_payout_request: {
+        Args: {
+          p_command_id: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          event_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
         }[]
       }
       retire_project_token: {
