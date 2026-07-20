@@ -61,6 +61,10 @@ export type CurrentWithdrawalRequest = {
   reservationJournalId: string | null;
   approvalJournalId: string | null;
   cancellationJournalId: string | null;
+  settlementJournalId: string | null;
+  latestExecutionStatus: string | null;
+  latestExecutionAttemptNo: number | null;
+  executionCompletedAt: string | null;
   cancellationActorType: string | null;
   canceledFromStatus: string | null;
   requestedAt: string;
@@ -201,6 +205,10 @@ function normalizeRequest(
     reservationJournalId: row.reservation_journal_id ?? null,
     approvalJournalId: row.approval_journal_id ?? null,
     cancellationJournalId: row.cancellation_journal_id ?? null,
+    settlementJournalId: row.settlement_journal_id ?? null,
+    latestExecutionStatus: row.latest_execution_status ?? null,
+    latestExecutionAttemptNo: row.latest_execution_attempt_no ?? null,
+    executionCompletedAt: row.execution_completed_at ?? null,
     cancellationActorType: row.cancellation_actor_type ?? null,
     canceledFromStatus: row.canceled_from_status ?? null,
     requestedAt: row.requested_at,

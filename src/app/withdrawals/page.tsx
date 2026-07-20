@@ -136,7 +136,8 @@ function BoundaryNotice() {
       <p className="mt-2 text-sm leading-6 text-amber-900">
         A request performs an Available Atomic Units precheck but posts no
         ledger journal. AAL2 administrators may reserve, approve, or cancel
-        local state. Approval does not mean external payout settlement.
+        local state. Internal settlement reduces custody only after an execution
+        attempt, and it is not blockchain verification.
       </p>
     </section>
   );
@@ -273,6 +274,7 @@ function WithdrawalRequestTable({
                 <th className="py-2 pr-4 font-medium">Asset</th>
                 <th className="py-2 pr-4 font-medium">Units</th>
                 <th className="py-2 pr-4 font-medium">Status</th>
+                <th className="py-2 pr-4 font-medium">Execution</th>
                 <th className="py-2 pr-4 font-medium">Journal</th>
                 <th className="py-2 pr-4 font-medium">Version</th>
                 <th className="py-2 pr-4 font-medium">Action</th>
@@ -301,6 +303,23 @@ function WithdrawalRequestTable({
                         From {request.canceledFromStatus}
                       </div>
                     ) : null}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {request.latestExecutionStatus ? (
+                      <>
+                        <div>{request.latestExecutionStatus}</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          attempt {request.latestExecutionAttemptNo ?? "None"}
+                        </div>
+                        {request.executionCompletedAt ? (
+                          <div className="mt-1 text-xs text-zinc-500">
+                            {formatTimestamp(request.executionCompletedAt)}
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <span className="text-zinc-500">None</span>
+                    )}
                   </td>
                   <td className="py-3 pr-4 font-mono text-xs">
                     {shortUuid(getTerminalJournalId(request))}
@@ -376,6 +395,7 @@ function getTerminalJournalId(
 ): string | null {
   return (
     request.cancellationJournalId ??
+    request.settlementJournalId ??
     request.approvalJournalId ??
     request.reservationJournalId
   );

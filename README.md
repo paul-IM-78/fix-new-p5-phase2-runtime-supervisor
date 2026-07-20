@@ -44,6 +44,7 @@ npm run test:ledger:opening-corrections:local
 npm run test:phase2:closeout:local
 npm run test:ledger:deposits:local
 npm run test:ledger:withdrawals:local
+npm run test:ledger:withdrawal-execution:local
 ```
 
 ## Supabase Local
@@ -488,6 +489,9 @@ GET /admin/withdrawals
 POST /api/v1/admin/withdrawals/reserve
 POST /api/v1/admin/withdrawals/approve
 POST /api/v1/admin/withdrawals/cancel
+POST /api/v1/admin/withdrawals/start-execution
+POST /api/v1/admin/withdrawals/fail-execution
+POST /api/v1/admin/withdrawals/settle-execution
 ```
 
 User withdrawal requests are local-only operational records. The app does not
@@ -507,8 +511,16 @@ Admin reservation posts debit `USER_AVAILABLE` and credit
 `USER_PENDING_WITHDRAWAL`. Admin approval posts debit
 `USER_PENDING_WITHDRAWAL` and credit `SYSTEM_WITHDRAWAL_CLEARING`. Approval
 does not debit `SYSTEM_CUSTODY` and does not mean external payout settlement.
-Admin cancellation restores local available units from REQUESTED, RESERVED, or
-APPROVED states as defined by the state machine.
+Admin cancellation restores local available units from REQUESTED, RESERVED,
+APPROVED, or FAILED states as defined by the state machine.
+
+NEW-P3-T05 adds local execution and internal settlement states. AAL2 admins can
+move APPROVED or FAILED withdrawals into EXECUTING with an external evidence
+reference. The database stores only a lowercase SHA-256 digest of that
+reference. EXECUTING can become FAILED without posting a journal, or SETTLED by
+posting debit `SYSTEM_WITHDRAWAL_CLEARING` and credit `SYSTEM_CUSTODY` through
+the existing private posting primitive. SETTLED is an internal accounting state,
+not chain verification, provider confirmation, or payout fulfillment.
 
 The public write RPC names use `*_user_payout_request` to avoid generic public
 financial write naming while the user-facing product copy remains Withdrawal
@@ -522,11 +534,13 @@ set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
 
 ```bash
 npm run test:ledger:withdrawals:local
+npm run test:ledger:withdrawal-execution:local
 ```
 
-Actual payout settlement, custody reduction, partial approval, withdrawal
-addresses, chain indexing, staking, reward, service-role application access,
-remote Supabase, mainnet, and production connectivity remain unimplemented.
+External payout automation, partial approval, partial settlement, withdrawal
+addresses, chain indexing, provider response storage, staking, reward,
+service-role application access, remote Supabase, mainnet, and production
+connectivity remain unimplemented.
 
 ## Health Route
 
@@ -587,7 +601,7 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
 - Real deposit settlement and automatic confirmation
-- Real withdrawal settlement, fulfillment, and custody reduction
+- External withdrawal fulfillment and blockchain verification
 - Staking lock and reward commands
 - Balance UI
 - Generic manual financial commands

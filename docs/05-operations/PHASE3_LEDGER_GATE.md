@@ -37,7 +37,12 @@ gate remains PASS.
 - Withdrawal approval leaves custody unchanged and moves value to clearing only.
 - User REQUESTED withdrawal cancellation.
 - Admin REQUESTED, RESERVED, and APPROVED withdrawal cancellation.
+- AAL2 administrator withdrawal execution start with digest-only evidence reference storage.
+- AAL2 administrator withdrawal execution failure with no ledger posting.
+- AAL2 administrator internal withdrawal settlement posting from clearing to custody.
+- Admin FAILED withdrawal cancellation with clearing reversal to user available.
 - Immutable withdrawal command audit.
+- Immutable withdrawal execution attempts.
 - Generic manual journal absent.
 - Text amount return values.
 - Service-role application client absent.
@@ -61,7 +66,8 @@ The following tasks must wait for this gate:
 - Arbitrary manual ledger correction.
 - Opening Balance replacement after reversal.
 - Real deposit settlement or automatic confirmation.
-- Blockchain deposit addresses or transaction IDs.
+- Blockchain deposit addresses, withdrawal addresses, transaction IDs, transaction hashes, signatures, provider responses, webhooks, and scanner payloads.
+- Partial withdrawal settlement, partial failure, and partial cancellation.
 - Browser ledger writes.
 - JavaScript `Number` for posting amounts.
 - Floating point or PostgreSQL `money` financial storage.
@@ -91,3 +97,11 @@ user-facing Withdrawal Requests, but approval is not external settlement.
 There is no withdrawal address, transaction ID, chain execution, custody
 decrease, partial approval, staking, reward, service-role application client,
 remote Supabase, mainnet, or production path.
+
+NEW-P3-T05 intentionally adds narrow `*_user_payout_execution` write RPCs for
+AAL2 administrator execution and internal settlement. The workflow is still
+local-only: start and fail post no journal, settle posts only the exact
+`SYSTEM_WITHDRAWAL_CLEARING` to `SYSTEM_CUSTODY` journal, raw evidence is
+reduced to a SHA-256 digest in the private schema, and no external payout,
+provider, scanner, webhook, mainnet, remote Supabase, service-role application
+client, or production path is added.

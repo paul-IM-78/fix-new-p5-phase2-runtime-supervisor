@@ -6,7 +6,14 @@ export type WithdrawalPublicResultCode =
   | "withdrawal_request_reserve_noop"
   | "withdrawal_request_approved"
   | "withdrawal_request_approve_noop"
+  | "withdrawal_execution_started"
+  | "withdrawal_execution_start_noop"
+  | "withdrawal_execution_failed"
+  | "withdrawal_execution_fail_noop"
+  | "withdrawal_execution_settled"
+  | "withdrawal_execution_settle_noop"
   | "withdrawal_command_conflict"
+  | "withdrawal_evidence_reference_conflict"
   | "withdrawal_wallet_not_found"
   | "withdrawal_wallet_version_conflict"
   | "withdrawal_wallet_not_active"
@@ -22,6 +29,14 @@ export type WithdrawalPublicResultCode =
   | "withdrawal_request_not_reservable"
   | "withdrawal_request_not_approvable"
   | "withdrawal_request_not_cancelable"
+  | "withdrawal_request_not_executable"
+  | "withdrawal_execution_attempt_not_found"
+  | "withdrawal_execution_attempt_version_conflict"
+  | "withdrawal_execution_attempt_mismatch"
+  | "withdrawal_execution_not_failable"
+  | "withdrawal_execution_not_settleable"
+  | "withdrawal_settlement_insufficient_custody"
+  | "withdrawal_settlement_clearing_mismatch"
   | "withdrawal_target_profile_not_active"
   | "withdrawal_target_wallet_not_active"
   | "withdrawal_target_asset_not_active"
@@ -45,8 +60,20 @@ const WITHDRAWAL_PUBLIC_MESSAGES: Record<
   withdrawal_request_approved: "Withdrawal request approved.",
   withdrawal_request_approve_noop:
     "Withdrawal request was already approved; no ledger mutation was posted.",
+  withdrawal_execution_started: "Withdrawal execution attempt started.",
+  withdrawal_execution_start_noop:
+    "Withdrawal execution was already started for this command.",
+  withdrawal_execution_failed: "Withdrawal execution attempt marked failed.",
+  withdrawal_execution_fail_noop:
+    "Withdrawal execution attempt was already failed; no ledger mutation was posted.",
+  withdrawal_execution_settled:
+    "Withdrawal execution settled in the internal ledger.",
+  withdrawal_execution_settle_noop:
+    "Withdrawal execution was already settled; no ledger mutation was posted.",
   withdrawal_command_conflict:
     "Command ID was already used for a different withdrawal command.",
+  withdrawal_evidence_reference_conflict:
+    "Evidence reference was already used for a different withdrawal execution command.",
   withdrawal_wallet_not_found: "Managed wallet account was not found.",
   withdrawal_wallet_version_conflict:
     "Managed wallet account version is no longer current.",
@@ -74,6 +101,22 @@ const WITHDRAWAL_PUBLIC_MESSAGES: Record<
     "Only RESERVED withdrawals can be approved.",
   withdrawal_request_not_cancelable:
     "The withdrawal request cannot be canceled in its current state.",
+  withdrawal_request_not_executable:
+    "Only APPROVED or FAILED withdrawals can start execution.",
+  withdrawal_execution_attempt_not_found:
+    "Withdrawal execution attempt was not found.",
+  withdrawal_execution_attempt_version_conflict:
+    "Withdrawal execution attempt version is no longer current.",
+  withdrawal_execution_attempt_mismatch:
+    "Withdrawal execution attempt is not the latest attempt for this request.",
+  withdrawal_execution_not_failable:
+    "Only the latest STARTED execution attempt can be marked failed.",
+  withdrawal_execution_not_settleable:
+    "Only the latest STARTED execution attempt can be settled.",
+  withdrawal_settlement_insufficient_custody:
+    "System custody units are lower than the requested withdrawal units.",
+  withdrawal_settlement_clearing_mismatch:
+    "Withdrawal clearing exposure is lower than the requested withdrawal units.",
   withdrawal_target_profile_not_active:
     "Admin reserve and approval require an ACTIVE target profile.",
   withdrawal_target_wallet_not_active:

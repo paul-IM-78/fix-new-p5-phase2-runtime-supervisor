@@ -505,6 +505,33 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      fail_user_payout_execution: {
+        Args: {
+          p_attempt_expected_version: number
+          p_command_id: string
+          p_execution_attempt_id: string
+          p_failure_code: string
+          p_failure_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          attempt_version: number
+          command_id: string
+          event_id: string
+          execution_attempt_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
       grant_admin_role: {
         Args: {
           p_command_id: string
@@ -681,12 +708,18 @@ export type Database = {
           cancellation_actor_type: string
           cancellation_journal_id: string
           decimals: number
+          execution_completed_at: string
+          latest_execution_attempt_id: string
+          latest_execution_attempt_no: number
+          latest_execution_attempt_version: number
+          latest_execution_status: string
           profile_status: string
           requested_at: string
           requested_units: string
           reservation_journal_id: string
           reserved_at: string
           reserved_by: string
+          settlement_journal_id: string
           status: string
           symbol: string
           target_user_id: string
@@ -743,10 +776,14 @@ export type Database = {
           cancellation_actor_type: string
           cancellation_journal_id: string
           decimals: number
+          execution_completed_at: string
+          latest_execution_attempt_no: number
+          latest_execution_status: string
           requested_at: string
           requested_units: string
           reservation_journal_id: string
           reserved_at: string
+          settlement_journal_id: string
           status: string
           symbol: string
           version: number
@@ -838,6 +875,7 @@ export type Database = {
           asset_id: string
           command_id: string
           event_id: string
+          execution_attempt_id: string
           occurred_at: string
           outcome: string
           previous_status: string
@@ -847,6 +885,21 @@ export type Database = {
           target_user_id: string
           units_text: string
           wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
+      list_withdrawal_execution_attempts: {
+        Args: { p_before_execution_attempt_id?: string; p_limit?: number }
+        Returns: {
+          attempt_no: number
+          completed_at: string
+          execution_attempt_id: string
+          failure_code: string
+          failure_reason: string
+          settlement_journal_id: string
+          started_at: string
+          status: string
+          version: number
           withdrawal_request_id: string
         }[]
       }
@@ -946,6 +999,57 @@ export type Database = {
           result_code: string
           role_record_id: string
           target_user_id: string
+        }[]
+      }
+      settle_user_payout_execution: {
+        Args: {
+          p_attempt_expected_version: number
+          p_command_id: string
+          p_execution_attempt_id: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          attempt_version: number
+          command_id: string
+          event_id: string
+          execution_attempt_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
+        }[]
+      }
+      start_user_payout_execution: {
+        Args: {
+          p_command_id: string
+          p_evidence_reference: string
+          p_reason: string
+          p_request_expected_version: number
+          p_withdrawal_request_id: string
+        }
+        Returns: {
+          asset_id: string
+          attempt_version: number
+          command_id: string
+          event_id: string
+          execution_attempt_id: string
+          journal_id: string
+          occurred_at: string
+          replayed: boolean
+          request_version: number
+          result_code: string
+          status: string
+          units: string
+          wallet_account_id: string
+          withdrawal_request_id: string
         }[]
       }
       transition_project_status: {

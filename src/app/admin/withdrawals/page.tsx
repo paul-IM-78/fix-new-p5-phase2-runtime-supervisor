@@ -9,6 +9,7 @@ import {
   listAdminWithdrawalOverview,
   type AdminWithdrawalRequest,
   type WithdrawalAuditEvent,
+  type WithdrawalExecutionAttempt,
 } from "@/server/admin/withdrawal-commands";
 import { getCurrentAdminAccess } from "@/server/auth/admin-guard";
 
@@ -97,6 +98,7 @@ export default async function AdminWithdrawalsPage({
         {overview.ok ? (
           <>
             <WithdrawalRequestTable requests={overview.withdrawalRequests} />
+            <WithdrawalAttemptTable attempts={overview.executionAttempts} />
             <WithdrawalAuditTable events={overview.auditEvents} />
           </>
         ) : (
@@ -125,9 +127,14 @@ function BoundaryNotes() {
           APPROVED moves pending withdrawal into SYSTEM_WITHDRAWAL_CLEARING.
         </p>
         <p>
-          CANCELED is terminal. Admin cancellation restores available units
-          from RESERVED or APPROVED local state while custody remains
-          unchanged.
+          EXECUTING and FAILED are local operator states. SETTLED posts an
+          internal clearing-to-custody ledger journal, but it is not blockchain
+          verification.
+        </p>
+        <p>
+          No raw payout address, transaction identifier, provider response, or
+          scanner payload is stored. Only a hashed external evidence reference
+          is retained for execution attempts.
         </p>
       </div>
     </section>
@@ -190,6 +197,13 @@ function WithdrawalRequestTable({
                         ? ` / from ${request.canceledFromStatus}`
                         : ""}
                     </div>
+                    {request.latestExecutionStatus ? (
+                      <div className="mt-1 text-xs text-zinc-500">
+                        attempt {request.latestExecutionAttemptNo} /{" "}
+                        {request.latestExecutionStatus} / v
+                        {request.latestExecutionAttemptVersion}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="py-3 pr-4 font-mono text-xs">
                     {shortUuid(getTerminalJournalId(request))}
@@ -248,11 +262,39 @@ function AdminActions({ request }: { request: AdminWithdrawalRequest }) {
 
   if (request.status === "APPROVED") {
     return (
-      <AdminActionForm
-        action="/api/v1/admin/withdrawals/cancel"
-        buttonLabel="Cancel"
-        request={request}
-      />
+      <div className="flex flex-col gap-3">
+        <StartExecutionForm request={request} />
+        <AdminActionForm
+          action="/api/v1/admin/withdrawals/cancel"
+          buttonLabel="Cancel"
+          request={request}
+        />
+      </div>
+    );
+  }
+
+  if (request.status === "EXECUTING") {
+    return request.latestExecutionAttemptId &&
+      request.latestExecutionAttemptVersion ? (
+      <div className="flex flex-col gap-3">
+        <SettleExecutionForm request={request} />
+        <FailExecutionForm request={request} />
+      </div>
+    ) : (
+      <span className="text-zinc-500">Attempt unavailable</span>
+    );
+  }
+
+  if (request.status === "FAILED") {
+    return (
+      <div className="flex flex-col gap-3">
+        <StartExecutionForm request={request} />
+        <AdminActionForm
+          action="/api/v1/admin/withdrawals/cancel"
+          buttonLabel="Cancel"
+          request={request}
+        />
+      </div>
     );
   }
 
@@ -298,6 +340,236 @@ function AdminActionForm({
   );
 }
 
+function StartExecutionForm({
+  request,
+}: {
+  request: AdminWithdrawalRequest;
+}) {
+  return (
+    <form
+      action="/api/v1/admin/withdrawals/start-execution"
+      className="flex min-w-80 flex-col gap-2"
+      method="post"
+    >
+      <input name="command_id" type="hidden" value={randomUUID()} />
+      <input
+        name="withdrawal_request_id"
+        type="hidden"
+        value={request.withdrawalRequestId}
+      />
+      <input
+        name="request_expected_version"
+        type="hidden"
+        value={request.version}
+      />
+      <input
+        autoComplete="off"
+        className="h-10 border border-zinc-300 px-3 font-mono text-sm"
+        maxLength={200}
+        minLength={8}
+        name="evidence_reference"
+        pattern="[A-Za-z0-9][A-Za-z0-9._:/-]{7,199}"
+        placeholder="Evidence reference"
+        required
+        type="text"
+      />
+      <textarea
+        className="min-h-20 resize-y border border-zinc-300 px-3 py-2 text-sm leading-6"
+        maxLength={500}
+        name="reason"
+        placeholder="Reason"
+        required
+      />
+      <button
+        className="h-9 border border-zinc-950 bg-zinc-950 px-3 text-sm font-medium text-white"
+        type="submit"
+      >
+        Start Execution
+      </button>
+    </form>
+  );
+}
+
+function FailExecutionForm({
+  request,
+}: {
+  request: AdminWithdrawalRequest;
+}) {
+  return (
+    <form
+      action="/api/v1/admin/withdrawals/fail-execution"
+      className="flex min-w-80 flex-col gap-2"
+      method="post"
+    >
+      <ExecutionAttemptHiddenInputs request={request} />
+      <input
+        autoComplete="off"
+        className="h-10 border border-zinc-300 px-3 font-mono text-sm"
+        maxLength={64}
+        minLength={2}
+        name="failure_code"
+        pattern="[A-Z][A-Z0-9_]{1,63}"
+        placeholder="FAILURE_CODE"
+        required
+        type="text"
+      />
+      <textarea
+        className="min-h-16 resize-y border border-zinc-300 px-3 py-2 text-sm leading-6"
+        maxLength={500}
+        name="failure_reason"
+        placeholder="Failure reason"
+        required
+      />
+      <textarea
+        className="min-h-16 resize-y border border-zinc-300 px-3 py-2 text-sm leading-6"
+        maxLength={500}
+        name="reason"
+        placeholder="Audit reason"
+        required
+      />
+      <button
+        className="h-9 border border-zinc-300 px-3 text-sm font-medium"
+        type="submit"
+      >
+        Mark Failed
+      </button>
+    </form>
+  );
+}
+
+function SettleExecutionForm({
+  request,
+}: {
+  request: AdminWithdrawalRequest;
+}) {
+  return (
+    <form
+      action="/api/v1/admin/withdrawals/settle-execution"
+      className="flex min-w-80 flex-col gap-2"
+      method="post"
+    >
+      <ExecutionAttemptHiddenInputs request={request} />
+      <textarea
+        className="min-h-20 resize-y border border-zinc-300 px-3 py-2 text-sm leading-6"
+        maxLength={500}
+        name="reason"
+        placeholder="Reason"
+        required
+      />
+      <button
+        className="h-9 border border-zinc-950 bg-zinc-950 px-3 text-sm font-medium text-white"
+        type="submit"
+      >
+        Settle Internally
+      </button>
+    </form>
+  );
+}
+
+function ExecutionAttemptHiddenInputs({
+  request,
+}: {
+  request: AdminWithdrawalRequest;
+}) {
+  return (
+    <>
+      <input name="command_id" type="hidden" value={randomUUID()} />
+      <input
+        name="withdrawal_request_id"
+        type="hidden"
+        value={request.withdrawalRequestId}
+      />
+      <input
+        name="request_expected_version"
+        type="hidden"
+        value={request.version}
+      />
+      <input
+        name="execution_attempt_id"
+        type="hidden"
+        value={request.latestExecutionAttemptId ?? ""}
+      />
+      <input
+        name="attempt_expected_version"
+        type="hidden"
+        value={request.latestExecutionAttemptVersion ?? ""}
+      />
+    </>
+  );
+}
+
+function WithdrawalAttemptTable({
+  attempts,
+}: {
+  attempts: WithdrawalExecutionAttempt[];
+}) {
+  return (
+    <section className="border border-zinc-200 p-5">
+      <h2 className="text-lg font-semibold">Execution attempts</h2>
+      {attempts.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
+                <th className="py-2 pr-4 font-medium">Started</th>
+                <th className="py-2 pr-4 font-medium">Attempt</th>
+                <th className="py-2 pr-4 font-medium">Status</th>
+                <th className="py-2 pr-4 font-medium">Request</th>
+                <th className="py-2 pr-4 font-medium">Settlement</th>
+                <th className="py-2 pr-4 font-medium">Failure</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attempts.map((attempt) => (
+                <tr
+                  className="border-b border-zinc-100 align-top"
+                  key={attempt.executionAttemptId}
+                >
+                  <td className="py-3 pr-4 whitespace-nowrap text-zinc-600">
+                    {formatTimestamp(attempt.startedAt)}
+                    {attempt.completedAt ? (
+                      <div className="mt-1 text-xs text-zinc-500">
+                        completed {formatTimestamp(attempt.completedAt)}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <div>#{attempt.attemptNo}</div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      v{attempt.version}
+                    </div>
+                  </td>
+                  <td className="py-3 pr-4 font-medium">{attempt.status}</td>
+                  <td className="py-3 pr-4 font-mono text-xs">
+                    {shortUuid(attempt.withdrawalRequestId)}
+                  </td>
+                  <td className="py-3 pr-4 font-mono text-xs">
+                    {shortUuid(attempt.settlementJournalId)}
+                  </td>
+                  <td className="max-w-sm py-3 pr-4">
+                    <div className="font-mono text-xs">
+                      {attempt.failureCode ?? "None"}
+                    </div>
+                    {attempt.failureReason ? (
+                      <div className="mt-1 text-zinc-600">
+                        {attempt.failureReason}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-zinc-600">
+          No local withdrawal execution attempts.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function WithdrawalAuditTable({ events }: { events: WithdrawalAuditEvent[] }) {
   return (
     <section className="border border-zinc-200 p-5">
@@ -312,6 +584,7 @@ function WithdrawalAuditTable({ events }: { events: WithdrawalAuditEvent[] }) {
                 <th className="py-2 pr-4 font-medium">Outcome</th>
                 <th className="py-2 pr-4 font-medium">Actor</th>
                 <th className="py-2 pr-4 font-medium">Request</th>
+                <th className="py-2 pr-4 font-medium">Attempt</th>
                 <th className="py-2 pr-4 font-medium">Journal</th>
                 <th className="py-2 pr-4 font-medium">Units</th>
                 <th className="py-2 pr-4 font-medium">Reason</th>
@@ -337,6 +610,9 @@ function WithdrawalAuditTable({ events }: { events: WithdrawalAuditEvent[] }) {
                   <td className="py-3 pr-4">{event.actorType}</td>
                   <td className="py-3 pr-4 font-mono text-xs">
                     {shortUuid(event.withdrawalRequestId)}
+                  </td>
+                  <td className="py-3 pr-4 font-mono text-xs">
+                    {shortUuid(event.executionAttemptId)}
                   </td>
                   <td className="py-3 pr-4 font-mono text-xs">
                     {shortUuid(event.resultingJournalId)}
@@ -366,6 +642,7 @@ function getTerminalJournalId(
 ): string | null {
   return (
     request.cancellationJournalId ??
+    request.settlementJournalId ??
     request.approvalJournalId ??
     request.reservationJournalId
   );
