@@ -408,6 +408,20 @@ export type Database = {
           version: number
         }[]
       }
+      list_admin_wallet_accounts: {
+        Args: { p_limit?: number }
+        Returns: {
+          closed_at: string
+          created_at: string
+          custody_model: string
+          profile_account_status: string
+          updated_at: string
+          user_id: string
+          version: number
+          wallet_account_id: string
+          wallet_status: string
+        }[]
+      }
       list_domain_admin_audit_events: {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
@@ -424,6 +438,24 @@ export type Database = {
           outcome: string
           project_id: string
           reason: string
+        }[]
+      }
+      list_wallet_account_admin_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previous_status: string
+          reason: string
+          resulting_status: string
+          target_profile_status: string
+          target_user_id: string
+          wallet_account_id: string
         }[]
       }
       retire_project_token: {
@@ -499,6 +531,25 @@ export type Database = {
           project_id: string
           replayed: boolean
           result_code: string
+        }[]
+      }
+      transition_wallet_account_status: {
+        Args: {
+          p_command_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_reason: string
+          p_wallet_account_id: string
+        }
+        Returns: {
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+          target_user_id: string
+          wallet_account_id: string
         }[]
       }
       update_project_details: {

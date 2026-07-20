@@ -72,18 +72,34 @@ export default async function AccountPage() {
           <h2 className="text-base font-semibold">Current scope</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
             This page intentionally excludes balances, wallet addresses,
-            assets, staking positions, rewards, and role administration.
+            staking positions, rewards, and role administration. Catalog and
+            managed wallet account reads expose metadata and operational state
+            only.
           </p>
         </section>
 
-        <form action="/api/v1/auth/sign-out" method="post">
-          <button
-            className="h-10 border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
-            type="submit"
+        <div className="flex flex-wrap gap-3">
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/catalog"
           >
-            Sign out
-          </button>
-        </form>
+            Catalog
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/wallet"
+          >
+            Wallet account
+          </Link>
+          <form action="/api/v1/auth/sign-out" method="post">
+            <button
+              className="h-10 border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+              type="submit"
+            >
+              Sign out
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );

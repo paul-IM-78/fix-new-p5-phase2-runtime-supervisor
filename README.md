@@ -284,6 +284,50 @@ No real SOL, USDT, project token, mint, production project, wallet status
 command, balance, ledger, staking, service-role application client, remote
 Supabase, mainnet, or production connection is implemented.
 
+## Wallet Account Status And User Reads
+
+ACTIVE users can read current non-financial catalog metadata and their own
+managed wallet account state:
+
+```text
+GET /catalog
+GET /wallet
+```
+
+Inactive profiles are blocked from catalog and wallet reads by both the
+central account guard and RLS. A user's own wallet row remains readable for
+ACTIVE, FROZEN, and CLOSED wallet states while the profile is ACTIVE.
+
+AAL2 ADMIN wallet status operations are available locally:
+
+```text
+GET /admin/wallets
+POST /api/v1/admin/wallets/transition
+```
+
+Allowed wallet status transitions are `ACTIVE` to `FROZEN`, `FROZEN` to
+`ACTIVE`, and `FROZEN` to `CLOSED`. Same-status commands return `NOOP`.
+`CLOSED` is terminal. Reactivating a FROZEN wallet requires the target profile
+to be ACTIVE.
+
+The database remains the final authorization boundary. The command RPC
+requires ACTIVE ADMIN plus AAL2 inside PostgreSQL, uses expected-version
+concurrency, accepts a caller-supplied command ID for idempotent replay, and
+records APPLIED or NOOP outcomes in immutable wallet account audit.
+
+Run the local wallet status integration script after starting local Supabase,
+resetting the DB, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:domain:wallet-status:local
+```
+
+No balance, ledger, deposit, withdrawal, reward, APY, staking, wallet address,
+private key, mnemonic, client signing, on-chain transaction, service-role
+application client, remote Supabase, mainnet, or production connection is
+implemented.
+
 ## Health Route
 
 ```text

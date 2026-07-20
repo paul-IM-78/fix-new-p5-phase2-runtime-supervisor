@@ -85,8 +85,10 @@ export default async function AdminPage() {
             Administrative product features are intentionally not
             implemented in this phase. Role grant and revoke commands are
             available on a dedicated AAL2 page. Project and supported asset
-            lifecycle commands are available on the catalog page; balances,
-            staking, and financial commands remain out of scope.
+            lifecycle commands are available on the catalog page. Managed
+            wallet account status commands are available on their own AAL2
+            page; balances, staking, and financial commands remain out of
+            scope.
           </p>
         </section>
 
@@ -102,6 +104,12 @@ export default async function AdminPage() {
             href="/admin/catalog"
           >
             Catalog commands
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/wallets"
+          >
+            Wallet commands
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
