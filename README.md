@@ -246,6 +246,44 @@ wallet account through RLS. Browser direct insert, update, and delete access is
 blocked for the new domain tables. Service-role application access, remote
 Supabase, mainnet, and production workflows remain out of scope.
 
+## Project And Asset Lifecycle Commands
+
+AAL2 ADMIN project and asset lifecycle commands are available for local
+development:
+
+```text
+GET /admin/catalog
+POST /api/v1/admin/domain/projects/create
+POST /api/v1/admin/domain/projects/update
+POST /api/v1/admin/domain/projects/transition
+POST /api/v1/admin/domain/assets/create
+POST /api/v1/admin/domain/assets/update
+POST /api/v1/admin/domain/assets/transition
+POST /api/v1/admin/domain/project-token/assign
+POST /api/v1/admin/domain/project-token/retire
+```
+
+The database remains the final authorization boundary. Every lifecycle command
+requires ACTIVE ADMIN plus AAL2 inside PostgreSQL, uses a transaction advisory
+lock, accepts a caller-supplied command ID for idempotent replay, and records
+APPLIED or NOOP outcomes in immutable domain audit.
+
+Project token replacement is modeled as suspend project, retire current token,
+assign a replacement active SPL token, then reactivate the project. Assignment
+history is preserved.
+
+Run the local domain lifecycle integration script after starting local
+Supabase, resetting the DB, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:domain:admin-lifecycle:local
+```
+
+No real SOL, USDT, project token, mint, production project, wallet status
+command, balance, ledger, staking, service-role application client, remote
+Supabase, mainnet, or production connection is implemented.
+
 ## Health Route
 
 ```text

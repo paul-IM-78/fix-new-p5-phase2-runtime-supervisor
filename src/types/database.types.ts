@@ -264,6 +264,68 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_project_token: {
+        Args: {
+          p_asset_id: string
+          p_command_id: string
+          p_project_id: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      create_project: {
+        Args: {
+          p_command_id: string
+          p_description: string
+          p_display_name: string
+          p_project_code: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      create_supported_asset: {
+        Args: {
+          p_asset_code: string
+          p_asset_type: string
+          p_command_id: string
+          p_decimals: number
+          p_display_name: string
+          p_mint_address: string
+          p_reason: string
+          p_symbol: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
       grant_admin_role: {
         Args: {
           p_command_id: string
@@ -282,6 +344,34 @@ export type Database = {
       }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_aal2: { Args: never; Returns: boolean }
+      list_admin_project_token_assignments: {
+        Args: { p_include_retired?: boolean; p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          asset_symbol: string
+          assigned_at: string
+          assignment_id: string
+          project_code: string
+          project_display_name: string
+          project_id: string
+          retired_at: string
+          version: number
+        }[]
+      }
+      list_admin_projects: {
+        Args: { p_limit?: number }
+        Returns: {
+          created_at: string
+          description: string
+          display_name: string
+          project_code: string
+          project_id: string
+          status: string
+          updated_at: string
+          version: number
+        }[]
+      }
       list_admin_role_audit_events: {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
@@ -301,6 +391,60 @@ export type Database = {
           target_user_id: string
         }[]
       }
+      list_admin_supported_assets: {
+        Args: { p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_id: string
+          asset_type: string
+          created_at: string
+          decimals: number
+          display_name: string
+          mint_address: string
+          network: string
+          status: string
+          symbol: string
+          updated_at: string
+          version: number
+        }[]
+      }
+      list_domain_admin_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          after_state: Json
+          asset_id: string
+          assignment_id: string
+          before_state: Json
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          outcome: string
+          project_id: string
+          reason: string
+        }[]
+      }
+      retire_project_token: {
+        Args: {
+          p_assignment_id: string
+          p_command_id: string
+          p_expected_version: number
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
       revoke_admin_role: {
         Args: {
           p_command_id: string
@@ -315,6 +459,88 @@ export type Database = {
           result_code: string
           role_record_id: string
           target_user_id: string
+        }[]
+      }
+      transition_project_status: {
+        Args: {
+          p_command_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_project_id: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      transition_supported_asset_status: {
+        Args: {
+          p_asset_id: string
+          p_command_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      update_project_details: {
+        Args: {
+          p_command_id: string
+          p_description: string
+          p_display_name: string
+          p_expected_version: number
+          p_project_id: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      update_supported_asset_details: {
+        Args: {
+          p_asset_id: string
+          p_command_id: string
+          p_display_name: string
+          p_expected_version: number
+          p_reason: string
+          p_symbol: string
+        }
+        Returns: {
+          asset_id: string
+          assignment_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
         }[]
       }
     }
