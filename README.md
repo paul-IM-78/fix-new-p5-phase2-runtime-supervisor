@@ -2,9 +2,9 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 2 user dashboard and local closeout boundary for auth,
-ADMIN AAL2 commands, project and asset metadata, managed wallet account
-state, and active catalog reads.
+Current phase: Phase 3 double-entry ledger core boundary for exact atomic
+unit posting, immutable journals and entries, calculated balance views, and a
+current-user read-only balance RPC.
 
 ## Stack
 
@@ -37,6 +37,7 @@ npm run dev
 npm run lint
 npm run build
 npm run start
+npm run test:ledger:core:local
 npm run test:phase2:closeout:local
 ```
 
@@ -343,6 +344,43 @@ blockchain address, private key, mnemonic, client signing, on-chain
 transaction, service-role application client, remote Supabase, mainnet, or
 production connection is implemented.
 
+## Double-Entry Ledger Core
+
+Phase 3 starts with a private PostgreSQL double-entry ledger core:
+
+- `private.positive_atomic_units` stores exact positive integer Atomic Units.
+- `private.ledger_accounts` defines user liability buckets and system accounts.
+- `private.ledger_journals` and `private.ledger_entries` are immutable.
+- `private.post_ledger_journal(...)` is the private posting primitive.
+- `private.ledger_account_balances` calculates account balances from entries.
+- `private.wallet_asset_ledger_balances` aggregates user wallet and asset buckets.
+- `public.list_current_user_ledger_balances()` returns the current ACTIVE user's buckets as text strings.
+
+Financial amounts at application and RPC boundaries must be decimal digit
+strings. JavaScript `Number`, PostgreSQL `money`, floating point values,
+fractional units, browser posting, public financial write RPCs, and direct
+browser ledger table access are prohibited.
+
+Current user balance buckets:
+
+- `available_units`: future usable user liability bucket.
+- `locked_units`: future staking principal liability bucket.
+- `pending_deposit_units`: future deposit-confirmation liability bucket.
+- `pending_withdrawal_units`: future withdrawal-processing liability bucket.
+- `total_liability_units`: sum of the user liability buckets.
+
+Run the local ledger core integration script after starting local Supabase,
+resetting the DB, and running the production Next.js server on
+`http://localhost:3000`:
+
+```bash
+npm run test:ledger:core:local
+```
+
+The ledger core does not implement real deposit, withdrawal, staking, reward,
+balance UI, real asset seed data, mainnet, remote Supabase, service-role
+application access, private keys, mnemonics, or blockchain signing.
+
 ## Health Route
 
 ```text
@@ -401,8 +439,10 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Initial production ADMIN bootstrap
 - User lookup and email search
 - MFA factor removal, recovery codes, and break-glass recovery
-- Financial ledger and balance calculation
-- Ledger
+- Deposit request and confirmation commands
+- Withdrawal reservation and fulfillment commands
+- Staking lock and reward commands
+- Balance UI
 - Financial features
 - Production deployment
 - Mainnet integration

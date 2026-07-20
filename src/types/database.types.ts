@@ -422,6 +422,20 @@ export type Database = {
           wallet_status: string
         }[]
       }
+      list_current_user_ledger_balances: {
+        Args: never
+        Returns: {
+          asset_code: string
+          asset_id: string
+          available_units: string
+          decimals: number
+          locked_units: string
+          pending_deposit_units: string
+          pending_withdrawal_units: string
+          symbol: string
+          total_liability_units: string
+        }[]
+      }
       list_domain_admin_audit_events: {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
