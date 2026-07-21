@@ -533,6 +533,34 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      create_user_staking_position: {
+        Args: {
+          p_command_id: string
+          p_position_id: string
+          p_principal_units: string
+          p_product_expected_version: number
+          p_staking_product_id: string
+          p_wallet_account_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          lock_journal_id: string
+          locked_at: string
+          matures_at: string
+          principal_units: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+          resulting_status: string
+          staking_position_id: string
+          staking_product_id: string
+          wallet_account_id: string
+        }[]
+      }
       fail_user_payout_execution: {
         Args: {
           p_attempt_expected_version: number
@@ -671,6 +699,33 @@ export type Database = {
           role_version: number
           target_account_status: string
           target_user_id: string
+        }[]
+      }
+      list_admin_staking_positions: {
+        Args: { p_limit?: number; p_status?: string }
+        Returns: {
+          asset_code: string
+          asset_decimals: number
+          asset_id: string
+          asset_symbol: string
+          lock_duration_days_snapshot: number
+          locked_at: string
+          matures_at: string
+          position_version: number
+          principal_units: string
+          product_code: string
+          product_version_snapshot: number
+          profile_status: string
+          project_code: string
+          project_id: string
+          reward_rounding_mode_snapshot: string
+          staking_position_id: string
+          staking_product_id: string
+          status: string
+          term_reward_rate_ppm_snapshot: number
+          user_id: string
+          wallet_account_id: string
+          wallet_status: string
         }[]
       }
       list_admin_staking_products: {
@@ -853,6 +908,31 @@ export type Database = {
           total_liability_units: string
         }[]
       }
+      list_current_user_staking_positions: {
+        Args: { p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_decimals: number
+          asset_id: string
+          asset_symbol: string
+          lock_duration_days_snapshot: number
+          locked_at: string
+          matures_at: string
+          position_version: number
+          principal_units: string
+          product_code: string
+          product_display_name: string
+          product_version_snapshot: number
+          project_code: string
+          project_display_name: string
+          project_id: string
+          reward_rounding_mode_snapshot: string
+          staking_position_id: string
+          staking_product_id: string
+          status: string
+          term_reward_rate_ppm_snapshot: number
+        }[]
+      }
       list_current_user_withdrawal_requests: {
         Args: { p_limit?: number }
         Returns: {
@@ -934,6 +1014,26 @@ export type Database = {
           resulting_journal_id: string
           target_user_id: string
           units_text: string
+          wallet_account_id: string
+        }[]
+      }
+      list_staking_position_command_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          outcome: string
+          principal_units: string
+          project_id: string
+          reason: string
+          resulting_status: string
+          staking_position_id: string
+          staking_product_id: string
           wallet_account_id: string
         }[]
       }

@@ -18,6 +18,14 @@ export function validateStakingEntityId(value: unknown): string | null {
   return validateUuid(value);
 }
 
+export function validateStakingPositionId(value: unknown): string | null {
+  return validateUuid(value);
+}
+
+export function validateStakingWalletAccountId(value: unknown): string | null {
+  return validateUuid(value);
+}
+
 export function validateStakingCommandId(value: unknown): string | null {
   return validateUuid(value);
 }
@@ -78,6 +86,10 @@ export function validatePositiveAtomicUnits(value: unknown): string | null {
   return POSITIVE_ATOMIC_UNITS_PATTERN.test(normalized)
     ? normalized
     : null;
+}
+
+export function validateStakingPrincipalUnits(value: unknown): string | null {
+  return validatePositiveAtomicUnits(value);
 }
 
 export function normalizeOptionalPositiveAtomicUnits(

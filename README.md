@@ -2,10 +2,11 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 4 staking product domain. Phase 3 double-entry ledger
-flows remain intact, and Phase 4 now adds read-only staking product catalog
-metadata plus AAL2 administrator product lifecycle commands. Staking requests,
-principal locking, position creation, rewards, unstaking, and chain
+Current phase: Phase 4 staking position and principal lock. Phase 3
+double-entry ledger flows remain intact, and Phase 4 now adds staking product
+catalog metadata, AAL2 administrator product lifecycle commands, user
+principal-lock position creation, and read-only administrator position review.
+Maturity processing, principal unlock, rewards, unstaking, and chain
 integration remain out of scope.
 
 ## Stack
@@ -48,6 +49,7 @@ npm run test:ledger:withdrawal-execution:local
 npm run test:ledger:balance-overview:local
 npm run test:phase3:closeout:local
 npm run test:staking:products:local
+npm run test:staking:positions:local
 ```
 
 ## Supabase Local
@@ -218,6 +220,44 @@ npm run test:auth:admin-mfa:local
 
 Direct ADMIN role mutation outside the AAL2 ADMIN command APIs is intentionally
 not present. Local E2E tests reset the database afterward.
+
+## Staking Position And Principal Lock
+
+`/staking` lists active staking products, current available/locked balance
+summaries, and the signed-in user's `LOCKED` staking positions. A same-origin
+POST creates a new staking position and moves principal in one private
+double-entry posting:
+
+```text
+DEBIT  USER_AVAILABLE
+CREDIT USER_LOCKED
+```
+
+The command enforces active profile, active managed wallet, product and wallet
+expected versions, active open product enrollment, current project token,
+per-position minimum and maximum atomic units, and sufficient available
+balance. Principal remains an atomic-unit string; JavaScript number conversion
+is not used.
+
+Each position snapshots product version, lock duration, reward rate PPM,
+rounding mode, locked timestamp, and maturity timestamp. Multiple positions for
+the same user and product are allowed when each command is distinct.
+
+`/admin/staking-positions` is AAL2 ADMIN-only and read-only. It shows position
+and audit summaries without unlock, cancellation, reward, wallet address,
+transaction, or on-chain controls.
+
+Run the local staking position integration script after starting local
+Supabase, resetting the DB, and building the production app:
+
+```bash
+npm run test:staking:positions:local
+```
+
+Principal unlock, maturity commands, reward calculation, reward posting, APY or
+APR display, expected reward display, on-chain staking, service-role
+application access, remote Supabase, and production connectivity are still not
+implemented.
 
 ## Phase 2 Domain Schema
 

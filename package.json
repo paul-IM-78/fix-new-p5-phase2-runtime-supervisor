@@ -28,7 +28,8 @@
     "test:ledger:withdrawal-execution:local": "node scripts/ledger/withdrawal-execution-settlement.local.mjs",
     "test:ledger:balance-overview:local": "node scripts/ledger/balance-overview.local.mjs",
     "test:phase3:closeout:local": "node scripts/phase/phase3-closeout.local.mjs",
-    "test:staking:products:local": "node scripts/staking/staking-products.local.mjs"
+    "test:staking:products:local": "node scripts/staking/staking-products.local.mjs",
+    "test:staking:positions:local": "node scripts/staking/staking-positions.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

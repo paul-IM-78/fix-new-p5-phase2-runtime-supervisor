@@ -90,7 +90,8 @@ export default async function AdminPage() {
             commands, and withdrawal request commands each use dedicated
             pages. Withdrawal approval is not external settlement; staking
             product administration is limited to product terms and status;
-            staking requests and rewards remain out of scope.
+            staking position review is read only; unlock and rewards remain
+            out of scope.
           </p>
         </section>
 
@@ -136,6 +137,12 @@ export default async function AdminPage() {
             href="/admin/staking-products"
           >
             Staking products
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/staking-positions"
+          >
+            Staking positions
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"

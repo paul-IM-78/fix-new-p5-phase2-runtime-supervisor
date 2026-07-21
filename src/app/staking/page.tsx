@@ -1,13 +1,22 @@
+import { randomUUID } from "node:crypto";
+
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { formatAtomicUnitsForDisplay } from "@/lib/ledger/atomic-units";
+import { getStakingPublicMessage } from "@/lib/staking/public-results";
 import {
-  listCurrentStakingProducts,
+  getCurrentStaking,
+  type CurrentStakingBalance,
+  type CurrentStakingPosition,
   type CurrentStakingProduct,
-  type CurrentStakingProductsResult,
-} from "@/server/staking/current-products";
+  type CurrentStakingResult,
+} from "@/server/staking/current-staking";
+
+type StakingPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,45 +28,64 @@ export const metadata: Metadata = {
   },
 };
 
-type ReadyProducts = Extract<CurrentStakingProductsResult, { status: "ready" }>;
+type ReadyStaking = Extract<CurrentStakingResult, { status: "ready" }>;
 
-export default async function StakingPage() {
-  const products = await listCurrentStakingProducts();
+export default async function StakingPage({
+  searchParams,
+}: StakingPageProps) {
+  const staking = await getCurrentStaking();
 
-  if (products.status === "anonymous") {
+  if (staking.status === "anonymous") {
     redirect("/auth/sign-in?next=/staking");
   }
 
-  if (products.status === "inactive_profile") {
+  if (staking.status === "inactive_profile") {
     redirect("/auth/account-unavailable");
   }
 
-  if (products.status === "missing_profile") {
+  if (staking.status === "missing_wallet") {
     redirect("/auth/error?code=account_unavailable");
   }
 
-  if (products.status === "unavailable") {
+  if (staking.status === "unavailable") {
     redirect("/auth/error?code=auth_unavailable");
   }
 
-  return <StakingView products={products} />;
+  const params = await searchParams;
+
+  return (
+    <StakingView
+      errorMessage={getStakingPublicMessage(getSingleValue(params.error))}
+      resultMessage={getStakingPublicMessage(getSingleValue(params.result))}
+      staking={staking}
+    />
+  );
 }
 
-function StakingView({ products }: { products: ReadyProducts }) {
+function StakingView({
+  errorMessage,
+  resultMessage,
+  staking,
+}: {
+  errorMessage: string | null;
+  resultMessage: string | null;
+  staking: ReadyStaking;
+}) {
   return (
     <main className="min-h-screen bg-white px-6 py-10 text-zinc-950">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
         <header className="flex flex-col gap-3 border-b border-zinc-200 pb-6">
           <Link className="text-sm text-zinc-600" href="/">
             Staking Wallet Web
           </Link>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
-              Staking products
+              Staking
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-              Active product terms published for future managed staking.
-              These entries are catalog metadata only.
+              Active product terms and principal-lock positions for the
+              managed wallet. This phase moves principal from Available to
+              Locked only.
             </p>
           </div>
           <nav className="flex flex-wrap gap-3">
@@ -67,22 +95,22 @@ function StakingView({ products }: { products: ReadyProducts }) {
           </nav>
         </header>
 
-        <BoundaryNotice />
-
-        {products.products.length > 0 ? (
-          <section className="grid gap-5 lg:grid-cols-2">
-            {products.products.map((product) => (
-              <ProductCard
-                key={product.stakingProductId}
-                product={product}
-              />
-            ))}
-          </section>
-        ) : (
-          <p className="border border-zinc-200 p-5 text-sm text-zinc-600">
-            No staking products are currently open or upcoming.
+        {resultMessage ? (
+          <p className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {resultMessage}
           </p>
-        )}
+        ) : null}
+
+        {errorMessage ? (
+          <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        <BoundaryNotice />
+        <WalletSummary staking={staking} />
+        <ProductSection staking={staking} />
+        <PositionSection positions={staking.positions} />
       </div>
     </main>
   );
@@ -92,18 +120,91 @@ function BoundaryNotice() {
   return (
     <section className="border border-amber-200 bg-amber-50 p-5">
       <h2 className="text-base font-semibold text-amber-950">
-        Product boundary
+        Principal lock boundary
       </h2>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        PPM is a fixed term condition for future reward rules, not APY or
-        APR. Reward calculation, staking requests, principal locking, claims,
-        unlocks, wallet addresses, and transactions are not implemented here.
+        This phase validates Principal Lock only. Maturity, unlock, reward
+        calculation, reward payment, claims, wallet addresses, transactions,
+        and on-chain staking are not provided yet.
+      </p>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        PPM is a fixed term condition, not APY or APR. No estimated reward or
+        yield guarantee is displayed.
       </p>
     </section>
   );
 }
 
-function ProductCard({ product }: { product: CurrentStakingProduct }) {
+function WalletSummary({ staking }: { staking: ReadyStaking }) {
+  return (
+    <section className="grid gap-4 sm:grid-cols-4">
+      <Detail label="Wallet status" value={staking.wallet.status} />
+      <Detail label="Wallet version" value={String(staking.wallet.version)} />
+      <Detail
+        label="Open products"
+        value={String(
+          staking.products.filter(
+            (product) => product.enrollmentState === "OPEN",
+          ).length,
+        )}
+      />
+      <Detail
+        label="Locked positions"
+        value={String(staking.positions.length)}
+      />
+    </section>
+  );
+}
+
+function ProductSection({ staking }: { staking: ReadyStaking }) {
+  const balancesByAssetId = new Map(
+    staking.balances.map((balance) => [balance.assetId, balance]),
+  );
+
+  return (
+    <section className="border border-zinc-200 p-5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Products</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Each principal lock is validated per position against product
+            minimum and maximum atomic units.
+          </p>
+        </div>
+      </div>
+
+      {staking.products.length > 0 ? (
+        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          {staking.products.map((product) => (
+            <ProductCard
+              balance={balancesByAssetId.get(product.assetId) ?? null}
+              key={product.stakingProductId}
+              product={product}
+              wallet={staking.wallet}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 border border-zinc-100 p-5 text-sm text-zinc-600">
+          No staking products are currently open or upcoming.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ProductCard({
+  balance,
+  product,
+  wallet,
+}: {
+  balance: CurrentStakingBalance | null;
+  product: CurrentStakingProduct;
+  wallet: ReadyStaking["wallet"];
+}) {
+  const canCreate =
+    wallet.status === "ACTIVE" && product.enrollmentState === "OPEN";
+
   return (
     <article className="border border-zinc-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -111,9 +212,9 @@ function ProductCard({ product }: { product: CurrentStakingProduct }) {
           <div className="font-mono text-xs text-zinc-500">
             {product.productCode}
           </div>
-          <h2 className="mt-1 text-xl font-semibold">
+          <h3 className="mt-1 text-xl font-semibold">
             {product.displayName}
-          </h2>
+          </h3>
           {product.description ? (
             <p className="mt-2 text-sm leading-6 text-zinc-600">
               {product.description}
@@ -127,10 +228,25 @@ function ProductCard({ product }: { product: CurrentStakingProduct }) {
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <Detail label="Project" value={product.projectCode} />
-        <Detail label="Asset" value={`${product.assetSymbol} / ${product.assetCode}`} />
         <Detail
-          label="Decimals"
-          value={String(product.assetDecimals)}
+          label="Asset"
+          value={`${product.assetSymbol} / ${product.assetCode}`}
+        />
+        <Detail
+          label="Available"
+          value={
+            balance
+              ? formatAtomicUnitsForDisplay(balance.availableUnits)
+              : "0 atomic units"
+          }
+        />
+        <Detail
+          label="Current locked"
+          value={
+            balance
+              ? formatAtomicUnitsForDisplay(balance.lockedUnits)
+              : "0 atomic units"
+          }
         />
         <Detail
           label="Lock duration"
@@ -145,26 +261,144 @@ function ProductCard({ product }: { product: CurrentStakingProduct }) {
           value={
             product.maxStakeUnits
               ? formatAtomicUnitsForDisplay(product.maxStakeUnits)
-              : "No product maximum"
+              : "No per-position maximum"
           }
         />
         <Detail
           label="Term reward"
           value={`${product.termRewardRatePpm} ppm / ${product.rewardRoundingMode}`}
         />
+      </div>
+
+      <form
+        action="/api/v1/staking/positions/create"
+        className="mt-5 border-t border-zinc-100 pt-5"
+        method="post"
+      >
+        <input
+          name="staking_product_id"
+          type="hidden"
+          value={product.stakingProductId}
+        />
+        <input
+          name="product_expected_version"
+          type="hidden"
+          value={product.productVersion}
+        />
+        <input
+          name="wallet_account_id"
+          type="hidden"
+          value={wallet.walletAccountId}
+        />
+        <input
+          name="wallet_expected_version"
+          type="hidden"
+          value={wallet.version}
+        />
+        <input name="position_id" type="hidden" value={randomUUID()} />
+        <input name="command_id" type="hidden" value={randomUUID()} />
+        <label className="block">
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            Principal atomic units
+          </span>
+          <input
+            className="mt-2 h-11 w-full border border-zinc-300 px-3 font-mono text-sm"
+            disabled={!canCreate}
+            inputMode="numeric"
+            maxLength={38}
+            name="principal_units"
+            pattern="[1-9][0-9]{0,37}"
+            required
+            type="text"
+          />
+        </label>
+        <button
+          className="mt-4 h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:border-zinc-300 disabled:bg-zinc-100 disabled:text-zinc-500"
+          disabled={!canCreate}
+          type="submit"
+        >
+          Lock principal
+        </button>
+        <p className="mt-3 text-sm leading-6 text-zinc-600">
+          {canCreate
+            ? "Creates one LOCKED position and posts Available to Locked for this asset."
+            : "Principal lock is available only while the wallet is ACTIVE and enrollment is OPEN."}
+        </p>
+      </form>
+    </article>
+  );
+}
+
+function PositionSection({
+  positions,
+}: {
+  positions: CurrentStakingPosition[];
+}) {
+  return (
+    <section className="border border-zinc-200 p-5">
+      <h2 className="text-lg font-semibold">Locked positions</h2>
+      {positions.length > 0 ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          {positions.map((position) => (
+            <PositionCard key={position.stakingPositionId} position={position} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 border border-zinc-100 p-5 text-sm text-zinc-600">
+          No locked staking positions exist for this account.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function PositionCard({ position }: { position: CurrentStakingPosition }) {
+  return (
+    <article className="border border-zinc-200 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="font-mono text-xs text-zinc-500">
+            {position.productCode}
+          </div>
+          <h3 className="mt-1 text-xl font-semibold">
+            {position.productDisplayName}
+          </h3>
+        </div>
+        <span className="border border-zinc-200 px-3 py-1 text-xs text-zinc-600">
+          {position.status}
+        </span>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <Detail
-          label="Product version"
-          value={String(product.productVersion)}
+          label="Principal"
+          value={formatAtomicUnitsForDisplay(position.principalUnits)}
         />
         <Detail
-          label="Enrollment starts"
-          value={formatTimestamp(product.enrollmentStartsAt)}
+          label="Asset"
+          value={`${position.assetSymbol} / ${position.assetCode}`}
         />
         <Detail
-          label="Enrollment ends"
-          value={formatTimestamp(product.enrollmentEndsAt)}
+          label="Locked"
+          value={formatTimestamp(position.lockedAt)}
+        />
+        <Detail
+          label="Matures"
+          value={formatTimestamp(position.maturesAt)}
+        />
+        <Detail
+          label="Duration snapshot"
+          value={`${position.lockDurationDaysSnapshot} days`}
+        />
+        <Detail
+          label="Reward snapshot"
+          value={`${position.termRewardRatePpmSnapshot} ppm / ${position.rewardRoundingModeSnapshot}`}
         />
       </div>
+      <p className="mt-4 text-sm leading-6 text-zinc-600">
+        Product status changes after creation do not alter this snapshot.
+        Unlock, reward posting, reward claim, and maturity commands are not
+        implemented.
+      </p>
     </article>
   );
 }
@@ -201,4 +435,8 @@ function formatTimestamp(value: string): string {
   const date = new Date(value);
 
   return Number.isNaN(date.getTime()) ? "Invalid time" : date.toISOString();
+}
+
+function getSingleValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
