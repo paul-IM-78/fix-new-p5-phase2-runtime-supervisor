@@ -1,6 +1,7 @@
 # Staking Position Maturity And Principal Unlock
 
-NEW-P4-T03 adds the first maturity-dependent staking position transition.
+NEW-P4-T03 added the first maturity-dependent staking position transition.
+NEW-P4-T04 keeps principal unlock separate from reward settlement.
 
 ## Scope
 
@@ -17,6 +18,9 @@ NEW-P4-T03 adds the first maturity-dependent staking position transition.
 DEBIT  USER_LOCKED
 CREDIT USER_AVAILABLE
 ```
+
+- Reward settlement can occur only after the position is `UNLOCKED`.
+- Principal unlock does not calculate or pay rewards in the unlock journal.
 
 ## Database Boundary
 
@@ -72,6 +76,21 @@ position audit row. Same-command replay returns the existing result. A new
 command against an already unlocked position records `NOOP` audit and does not
 post a journal, update the position, increment version, or change balances.
 
+## Reward Link
+
+Reward settlement is a separate NEW-P4-T04 command that reads the immutable
+position snapshot and posts a distinct reward journal only when calculated
+reward units are positive:
+
+```text
+DEBIT  SYSTEM_REWARD_EXPENSE
+CREDIT USER_AVAILABLE
+```
+
+Zero reward creates a final reward settlement row and immutable reward audit
+without a journal. Unlock itself never includes reward units, reward expense,
+or projected yield.
+
 ## Audit
 
 `private.staking_position_command_audit_events` now records:
@@ -120,10 +139,11 @@ versions, principal units, journal IDs, balances, reasons, or database errors.
 - Early unlock
 - Partial unlock
 - Position cancellation
-- Reward calculation
-- Reward posting
-- Reward claim
-- APY/APR or expected reward display
+- Partial reward
+- Repeated reward claim
+- Reward reversal
+- Daily accrual or compound reward
+- Projected yield display
 - Unstaking
 - Wallet address collection
 - Transaction signatures or external evidence

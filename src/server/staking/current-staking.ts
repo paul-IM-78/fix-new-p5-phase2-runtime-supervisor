@@ -8,6 +8,8 @@ import {
 import {
   validateStakingMaturityState,
   validateStakingPositionStatus,
+  validateStakingRewardState,
+  validateStakingRewardUnits,
 } from "@/lib/staking/validation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { inspectAccountAccess } from "@/server/auth/account-guard";
@@ -92,6 +94,10 @@ export type CurrentStakingPosition = {
   maturesAt: string;
   unlockedAt: string | null;
   unlockActorType: "USER" | "ADMIN" | null;
+  rewardState: "NOT_ELIGIBLE" | "CLAIMABLE" | "PAID" | "ZERO";
+  calculatedRewardUnits: string;
+  rewardSettledAt: string | null;
+  rewardActorType: "USER" | "ADMIN" | null;
   positionVersion: number;
 };
 
@@ -360,6 +366,10 @@ function normalizePositions(
 function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
   const status = validateStakingPositionStatus(row.status);
   const maturityState = validateStakingMaturityState(row.maturity_state);
+  const rewardState = validateStakingRewardState(row.reward_state);
+  const calculatedRewardUnits = validateStakingRewardUnits(
+    row.calculated_reward_units,
+  );
 
   if (
     !isSafeText(row.product_code, 64) ||
@@ -380,6 +390,11 @@ function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
     !isValidIsoDate(row.matures_at) ||
     (row.unlocked_at !== null && !isValidIsoDate(row.unlocked_at)) ||
     !isUnlockActorTypeOrNull(row.unlock_actor_type) ||
+    !rewardState ||
+    !calculatedRewardUnits ||
+    (row.reward_settled_at !== null &&
+      !isValidIsoDate(row.reward_settled_at)) ||
+    !isRewardActorTypeOrNull(row.reward_actor_type) ||
     !isSafeInteger(row.position_version, 1, Number.MAX_SAFE_INTEGER)
   ) {
     return null;
@@ -408,6 +423,10 @@ function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
     maturesAt: row.matures_at,
     unlockedAt: row.unlocked_at ?? null,
     unlockActorType: row.unlock_actor_type ?? null,
+    rewardState,
+    calculatedRewardUnits,
+    rewardSettledAt: row.reward_settled_at ?? null,
+    rewardActorType: row.reward_actor_type ?? null,
     positionVersion: row.position_version,
   };
 }
@@ -421,6 +440,12 @@ function isEnrollmentState(value: string): value is "UPCOMING" | "OPEN" {
 }
 
 function isUnlockActorTypeOrNull(
+  value: unknown,
+): value is "USER" | "ADMIN" | null {
+  return value === null || value === "USER" || value === "ADMIN";
+}
+
+function isRewardActorTypeOrNull(
   value: unknown,
 ): value is "USER" | "ADMIN" | null {
   return value === null || value === "USER" || value === "ADMIN";

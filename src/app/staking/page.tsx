@@ -84,8 +84,8 @@ function StakingView({
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
               Active product terms and principal-lock positions for the
-              managed wallet. This phase supports principal lock and matured
-              principal unlock only.
+              managed wallet. This phase supports principal lock, matured
+              principal unlock, and one-time snapshot reward settlement.
             </p>
           </div>
           <nav className="flex flex-wrap gap-3">
@@ -123,16 +123,16 @@ function BoundaryNotice() {
   return (
     <section className="border border-amber-200 bg-amber-50 p-5">
       <h2 className="text-base font-semibold text-amber-950">
-        Principal lock boundary
+        Staking position boundary
       </h2>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        This phase validates Principal Lock and matured Principal Unlock only.
-        Reward calculation, reward payment, claims, wallet addresses,
-        transactions, and on-chain staking are not provided.
+        This phase validates Principal Lock, matured Principal Unlock, and
+        one-time snapshot reward settlement only. External account identifiers,
+        transactions, repeated claims, and on-chain staking are not provided.
       </p>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        PPM is a fixed term condition, not APY or APR. Unlock moves principal
-        only; no estimated reward or yield guarantee is displayed.
+        PPM is a fixed term snapshot condition. The browser never accepts a
+        reward amount or computes the reward locally.
       </p>
     </section>
   );
@@ -372,6 +372,10 @@ function PositionCard({
     position.status === "LOCKED" &&
     position.maturityState === "MATURED" &&
     wallet.status === "ACTIVE";
+  const canSettleReward =
+    position.status === "UNLOCKED" &&
+    position.rewardState === "CLAIMABLE" &&
+    wallet.status === "ACTIVE";
 
   return (
     <article className="border border-zinc-200 p-5">
@@ -424,11 +428,30 @@ function PositionCard({
           label="Reward snapshot"
           value={`${position.termRewardRatePpmSnapshot} ppm / ${position.rewardRoundingModeSnapshot}`}
         />
+        <Detail label="Reward state" value={position.rewardState} />
+        <Detail
+          label="Calculated reward"
+          value={formatAtomicUnitsForDisplay(
+            position.calculatedRewardUnits,
+          )}
+        />
+        {position.rewardSettledAt ? (
+          <Detail
+            label="Reward settled"
+            value={formatTimestamp(position.rewardSettledAt)}
+          />
+        ) : null}
+        {position.rewardActorType ? (
+          <Detail
+            label="Reward actor"
+            value={position.rewardActorType}
+          />
+        ) : null}
       </div>
       <p className="mt-4 text-sm leading-6 text-zinc-600">
         Product status changes after creation do not alter this snapshot.
-        Unlock moves matured principal only. Reward posting, reward claim, and
-        early exit commands are not implemented.
+        Unlock moves matured principal only. Reward settlement is a separate
+        one-time command after unlock.
       </p>
       {position.status === "LOCKED" && position.maturityState === "MATURED" ? (
         <form
@@ -465,6 +488,48 @@ function PositionCard({
               : "This wallet is not ACTIVE. An administrator may need to review the matured principal; the principal is not lost."}
           </p>
         </form>
+      ) : null}
+      {position.status === "UNLOCKED" && position.rewardState === "CLAIMABLE" ? (
+        <form
+          action="/api/v1/staking/positions/settle-reward"
+          className="mt-5 border-t border-zinc-100 pt-5"
+          method="post"
+        >
+          <input
+            name="staking_position_id"
+            type="hidden"
+            value={position.stakingPositionId}
+          />
+          <input
+            name="position_expected_version"
+            type="hidden"
+            value={position.positionVersion}
+          />
+          <input
+            name="wallet_expected_version"
+            type="hidden"
+            value={wallet.version}
+          />
+          <input name="command_id" type="hidden" value={randomUUID()} />
+          <button
+            className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:border-zinc-300 disabled:bg-zinc-100 disabled:text-zinc-500"
+            disabled={!canSettleReward}
+            type="submit"
+          >
+            Settle reward
+          </button>
+          <p className="mt-3 text-sm leading-6 text-zinc-600">
+            {canSettleReward
+              ? "Credits the calculated snapshot reward to Available units."
+              : "Reward settlement requires an ACTIVE wallet; an administrator may review the unlocked position."}
+          </p>
+        </form>
+      ) : null}
+      {position.status === "UNLOCKED" &&
+      (position.rewardState === "PAID" || position.rewardState === "ZERO") ? (
+        <p className="mt-4 border border-zinc-100 p-4 text-sm leading-6 text-zinc-600">
+          Reward settlement is final for this position.
+        </p>
       ) : null}
       {position.status === "LOCKED" && position.maturityState === "LOCKED" ? (
         <p className="mt-4 border border-zinc-100 p-4 text-sm leading-6 text-zinc-600">

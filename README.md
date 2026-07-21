@@ -2,12 +2,12 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 4 staking position maturity and principal unlock. Phase 3
-double-entry ledger flows remain intact, and Phase 4 now adds staking product
-catalog metadata, AAL2 administrator product lifecycle commands, user
-principal-lock position creation, matured user principal unlock, and AAL2
-administrator matured principal unlock. Rewards, unstaking, early exit, and
-chain integration remain out of scope.
+Current phase: Phase 4 staking reward settlement. Phase 3 double-entry ledger
+flows remain intact, and Phase 4 now adds staking product catalog metadata,
+AAL2 administrator product lifecycle commands, user principal-lock position
+creation, matured principal unlock, and one-time immutable snapshot reward
+settlement. Unstaking, early exit, repeated reward claim, reward reversal,
+recurring accrual, and chain integration remain out of scope.
 
 ## Stack
 
@@ -51,6 +51,7 @@ npm run test:phase3:closeout:local
 npm run test:staking:products:local
 npm run test:staking:positions:local
 npm run test:staking:position-unlock:local
+npm run test:staking:rewards:local
 ```
 
 ## Supabase Local
@@ -253,12 +254,29 @@ DEBIT  USER_LOCKED
 CREDIT USER_AVAILABLE
 ```
 
-`/admin/staking-positions` is AAL2 ADMIN-only. It shows position and audit
-summaries and can unlock matured `LOCKED` positions for operational cleanup,
-including inactive target profiles or non-active target wallets when existing
-ledger accounts remain valid. It does not provide early unlock, partial
-unlock, cancellation, reward, wallet address, transaction, or on-chain
-controls.
+After principal unlock, `/staking` shows reward state and database-calculated
+reward units. A same-origin POST can settle the reward once per position:
+
+```text
+DEBIT  SYSTEM_REWARD_EXPENSE
+CREDIT USER_AVAILABLE
+```
+
+Reward calculation uses the immutable position snapshot:
+
+```text
+floor(principal_units * term_reward_rate_ppm_snapshot / 1,000,000)
+```
+
+The browser does not accept reward units or reward rates. Zero reward creates
+a final settlement without a journal or ledger entries.
+
+`/admin/staking-positions` is AAL2 ADMIN-only. It shows position, principal
+unlock audit, reward state, and reward audit summaries. It can unlock matured
+`LOCKED` positions and settle rewards for operational cleanup, including
+inactive target profiles or non-active target wallets when existing ledger
+accounts remain valid. It does not provide early unlock, partial unlock,
+cancellation, wallet address, transaction, or on-chain controls.
 
 Run the local staking position integration script after starting local
 Supabase, resetting the DB, and building the production app:
@@ -266,10 +284,11 @@ Supabase, resetting the DB, and building the production app:
 ```bash
 npm run test:staking:positions:local
 npm run test:staking:position-unlock:local
+npm run test:staking:rewards:local
 ```
 
-Reward calculation, reward posting, APY or APR display, expected reward
-display, early exit, partial unlock, on-chain staking, service-role
+Partial reward, reward reversal, recurring accrual, compound reward, projected
+yield display, early exit, partial unlock, on-chain staking, service-role
 application access, remote Supabase, and production connectivity are still not
 implemented.
 
@@ -740,7 +759,7 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - MFA factor removal, recovery codes, and break-glass recovery
 - Real deposit settlement and automatic confirmation
 - External withdrawal fulfillment and blockchain verification
-- Staking reward commands
+- Partial staking reward, reward reversal, and recurring reward accrual
 - Generic manual financial commands
 - Production deployment
 - Mainnet integration

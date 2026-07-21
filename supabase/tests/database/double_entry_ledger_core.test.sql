@@ -1582,6 +1582,53 @@ select extensions.ok(
   'private helpers are not executable by browser roles and balance rpc is authenticated only'
 );
 
+select extensions.is(
+  (
+    select coalesce(string_agg(procedures.proname::text, ',' order by procedures.proname), '')
+    from pg_proc as procedures
+    join pg_namespace as namespaces
+      on namespaces.oid = procedures.pronamespace
+    where namespaces.nspname = 'public'
+      and procedures.proname !~* '^(list_|post_opening_balance$|reverse_opening_balance$)'
+      and procedures.proname ~* '(post_ledger|ledger_post|ledger_journal|ledger_entry|deposit|withdraw|stake|reward)'
+  ),
+  'settle_current_user_staking_reward,settle_staking_reward_as_admin',
+  'legacy public financial write name filter matches only narrow staking reward settlement commands'
+);
+
+select extensions.ok(
+  pg_get_function_identity_arguments(
+    'public.settle_current_user_staking_reward(uuid, bigint, bigint, uuid)'::regprocedure
+  ) = 'p_staking_position_id uuid, p_position_expected_version bigint, p_wallet_expected_version bigint, p_command_id uuid'
+    and pg_get_function_identity_arguments(
+      'public.settle_staking_reward_as_admin(uuid, bigint, uuid, text)'::regprocedure
+    ) = 'p_staking_position_id uuid, p_position_expected_version bigint, p_command_id uuid, p_reason text'
+    and not (
+      pg_get_function_identity_arguments(
+        'public.settle_current_user_staking_reward(uuid, bigint, bigint, uuid)'::regprocedure
+      ) || ',' ||
+      pg_get_function_identity_arguments(
+        'public.settle_staking_reward_as_admin(uuid, bigint, uuid, text)'::regprocedure
+      )
+    ) ~* '(ledger_account|account_id|side|entry|entries|journal_type|asset_id|principal|reward_units|reward_rate|units)'
+    and (
+      select count(*) = 2
+      from pg_proc as procedures
+      where procedures.oid in (
+        'public.settle_current_user_staking_reward(uuid, bigint, bigint, uuid)'::regprocedure,
+        'public.settle_staking_reward_as_admin(uuid, bigint, uuid, text)'::regprocedure
+      )
+        and procedures.prokind = 'f'
+        and procedures.provolatile = 'v'
+        and procedures.prosecdef
+        and coalesce(array_to_string(procedures.proconfig, ','), '') like '%search_path=""%'
+        and has_function_privilege('authenticated', procedures.oid, 'execute')
+        and not has_function_privilege('public', procedures.oid, 'execute')
+        and not has_function_privilege('anon', procedures.oid, 'execute')
+    ),
+  'reward settlement RPCs are narrow authenticated security definer commands, not generic ledger posting wrappers'
+);
+
 select extensions.ok(
   not exists (
     select 1
@@ -1589,7 +1636,7 @@ select extensions.ok(
     join pg_namespace as namespaces
       on namespaces.oid = procedures.pronamespace
     where namespaces.nspname = 'public'
-      and procedures.proname !~* '^(list_|post_opening_balance$|reverse_opening_balance$)'
+      and procedures.proname !~* '^(list_|post_opening_balance$|reverse_opening_balance$|settle_current_user_staking_reward$|settle_staking_reward_as_admin$)'
       and procedures.proname ~* '(post_ledger|ledger_post|ledger_journal|ledger_entry|deposit|withdraw|stake|reward)'
   )
     and (

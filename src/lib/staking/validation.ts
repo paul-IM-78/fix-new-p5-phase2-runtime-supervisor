@@ -21,6 +21,14 @@ export type StakingPositionMaturityState =
   | "MATURED"
   | "UNLOCKED";
 
+export type StakingRewardState =
+  | "NOT_ELIGIBLE"
+  | "CLAIMABLE"
+  | "PAID"
+  | "ZERO";
+
+export type StakingRewardSettlementOutcome = "PAID" | "ZERO";
+
 export function validateStakingEntityId(value: unknown): string | null {
   return validateUuid(value);
 }
@@ -91,6 +99,18 @@ export function validatePositiveAtomicUnits(value: unknown): string | null {
   const normalized = value.trim();
 
   return POSITIVE_ATOMIC_UNITS_PATTERN.test(normalized)
+    ? normalized
+    : null;
+}
+
+export function validateStakingRewardUnits(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return /^(0|[1-9][0-9]{0,37})$/.test(normalized)
     ? normalized
     : null;
 }
@@ -184,6 +204,12 @@ export function normalizeAdminStakingPositionUnlockReason(
   return normalizeStakingCommandReason(value);
 }
 
+export function normalizeAdminStakingRewardSettlementReason(
+  value: unknown,
+): string | null {
+  return normalizeStakingCommandReason(value);
+}
+
 export function validateStakingPositionStatus(
   value: unknown,
 ): StakingPositionStatus | null {
@@ -210,6 +236,37 @@ export function validateStakingMaturityState(
   return normalized === "LOCKED" ||
     normalized === "MATURED" ||
     normalized === "UNLOCKED"
+    ? normalized
+    : null;
+}
+
+export function validateStakingRewardState(
+  value: unknown,
+): StakingRewardState | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized === "NOT_ELIGIBLE" ||
+    normalized === "CLAIMABLE" ||
+    normalized === "PAID" ||
+    normalized === "ZERO"
+    ? normalized
+    : null;
+}
+
+export function validateStakingRewardSettlementOutcome(
+  value: unknown,
+): StakingRewardSettlementOutcome | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized === "PAID" || normalized === "ZERO"
     ? normalized
     : null;
 }

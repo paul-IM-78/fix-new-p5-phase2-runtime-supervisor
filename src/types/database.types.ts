@@ -708,6 +708,7 @@ export type Database = {
           asset_decimals: number
           asset_id: string
           asset_symbol: string
+          calculated_reward_units: string
           lock_duration_days_snapshot: number
           locked_at: string
           matures_at: string
@@ -719,7 +720,14 @@ export type Database = {
           profile_status: string
           project_code: string
           project_id: string
+          reward_actor_type: string
+          reward_journal_id: string
           reward_rounding_mode_snapshot: string
+          reward_settled_at: string
+          reward_settlement_id: string
+          reward_state: string
+          settled_by: string
+          settlement_outcome: string
           staking_position_id: string
           staking_product_id: string
           status: string
@@ -919,6 +927,7 @@ export type Database = {
           asset_decimals: number
           asset_id: string
           asset_symbol: string
+          calculated_reward_units: string
           lock_duration_days_snapshot: number
           locked_at: string
           matures_at: string
@@ -931,7 +940,10 @@ export type Database = {
           project_code: string
           project_display_name: string
           project_id: string
+          reward_actor_type: string
           reward_rounding_mode_snapshot: string
+          reward_settled_at: string
+          reward_state: string
           staking_position_id: string
           staking_product_id: string
           status: string
@@ -1063,6 +1075,28 @@ export type Database = {
           reason: string
           resulting_status: string
           staking_product_id: string
+        }[]
+      }
+      list_staking_reward_command_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_type: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          event_id: string
+          occurred_at: string
+          outcome: string
+          project_id: string
+          resulting_journal_id: string
+          reward_settlement_id: string
+          reward_units: string
+          settlement_outcome: string
+          staking_position_id: string
+          staking_product_id: string
+          target_user_id: string
+          wallet_account_id: string
         }[]
       }
       list_wallet_account_admin_audit_events: {
@@ -1216,6 +1250,42 @@ export type Database = {
           result_code: string
           role_record_id: string
           target_user_id: string
+        }[]
+      }
+      settle_current_user_staking_reward: {
+        Args: {
+          p_command_id: string
+          p_position_expected_version: number
+          p_staking_position_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          replayed: boolean
+          result_code: string
+          reward_settlement_id: string
+          reward_state: string
+          reward_units: string
+          settled_at: string
+          settlement_outcome: string
+          staking_position_id: string
+        }[]
+      }
+      settle_staking_reward_as_admin: {
+        Args: {
+          p_command_id: string
+          p_position_expected_version: number
+          p_reason: string
+          p_staking_position_id: string
+        }
+        Returns: {
+          replayed: boolean
+          result_code: string
+          reward_settlement_id: string
+          reward_state: string
+          reward_units: string
+          settled_at: string
+          settlement_outcome: string
+          staking_position_id: string
         }[]
       }
       settle_user_payout_execution: {

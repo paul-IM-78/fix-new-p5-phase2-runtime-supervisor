@@ -20,6 +20,21 @@ export type StakingPublicResultCode =
   | "staking_position_replayed"
   | "staking_position_unlocked"
   | "staking_position_unlock_noop"
+  | "staking_reward_settled"
+  | "staking_reward_zero_settled"
+  | "staking_reward_settlement_noop"
+  | "staking_reward_position_not_found"
+  | "staking_reward_position_version_conflict"
+  | "staking_reward_position_not_unlocked"
+  | "staking_reward_wallet_not_found"
+  | "staking_reward_wallet_version_conflict"
+  | "staking_reward_wallet_not_active"
+  | "staking_reward_command_conflict"
+  | "staking_reward_calculation_invalid"
+  | "staking_reward_account_unavailable"
+  | "staking_reward_forbidden"
+  | "staking_reward_unavailable"
+  | "staking_reward_audit_unavailable"
   | "staking_position_not_found"
   | "staking_position_version_conflict"
   | "staking_position_not_matured"
@@ -79,6 +94,36 @@ const STAKING_PUBLIC_MESSAGES: Record<StakingPublicResultCode, string> = {
     "만기된 스테이킹 원금이 사용 가능 잔액으로 해제되었습니다.",
   staking_position_unlock_noop:
     "이미 해제된 스테이킹 포지션입니다. 잔액 변경은 없습니다.",
+  staking_reward_settled:
+    "Staking reward settled and credited to available units.",
+  staking_reward_zero_settled:
+    "Staking reward settled as zero with no ledger posting.",
+  staking_reward_settlement_noop:
+    "Staking reward was already settled. No balance changed.",
+  staking_reward_position_not_found:
+    "Staking position was not found.",
+  staking_reward_position_version_conflict:
+    "Staking position version is no longer current.",
+  staking_reward_position_not_unlocked:
+    "Staking reward can be settled only after principal unlock.",
+  staking_reward_wallet_not_found:
+    "Managed wallet account was not found.",
+  staking_reward_wallet_version_conflict:
+    "Managed wallet version is no longer current.",
+  staking_reward_wallet_not_active:
+    "Managed wallet must be active for user reward settlement.",
+  staking_reward_command_conflict:
+    "Reward settlement command ID has already been used differently.",
+  staking_reward_calculation_invalid:
+    "Staking reward calculation is unavailable.",
+  staking_reward_account_unavailable:
+    "Reward ledger accounts are unavailable.",
+  staking_reward_forbidden:
+    "Staking reward settlement is not allowed for this account.",
+  staking_reward_unavailable:
+    "Staking reward settlement is unavailable.",
+  staking_reward_audit_unavailable:
+    "Staking reward audit is unavailable.",
   staking_position_not_found:
     "스테이킹 포지션을 찾을 수 없습니다.",
   staking_position_version_conflict:

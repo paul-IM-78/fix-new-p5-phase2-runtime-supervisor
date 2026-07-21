@@ -1,7 +1,7 @@
 # Phase 4 Staking Gate
 
-NEW-P4-T03 extends Phase 4 from immutable principal-lock positions to matured
-principal unlock.
+NEW-P4-T04 extends Phase 4 from matured principal unlock to one-time immutable
+snapshot reward settlement.
 
 ## Gate Conditions Met
 
@@ -46,34 +46,61 @@ principal unlock.
   liability unchanged.
 - Unlock command replay, conflict, and NOOP boundaries use caller-supplied
   command IDs.
+- Reward calculation uses immutable position snapshot fields only.
+- Reward calculation uses exact PostgreSQL `numeric` arithmetic and
+  `FLOOR` rounding.
+- Reward settlement requires `UNLOCKED` positions.
+- Position reward settlement is limited to one row per position.
+- Positive reward settlement posts one `USER_STAKING_REWARD_PAID` or
+  `ADMIN_STAKING_REWARD_PAID` journal with `DEBIT SYSTEM_REWARD_EXPENSE` and
+  `CREDIT USER_AVAILABLE`.
+- Positive reward settlement increases available units and total liability
+  while leaving principal and locked units unchanged.
+- Zero reward settlement creates a final `ZERO` settlement without a journal
+  or ledger entries.
+- Reward settlement replay, conflict, NOOP, and concurrent replay boundaries
+  use caller-supplied command IDs.
+- Reward settlement rows and reward command audit rows are append-only and
+  immutable.
+- Users can settle their own rewards only while profile and wallet are active.
+- AAL2 administrators can settle rewards for inactive target positions when
+  existing ledger accounts remain valid.
+- Users can read reward state and calculated reward units without settlement
+  IDs, journal IDs, administrator IDs, request data, or private ledger account
+  IDs.
+- AAL2 administrators can read reward settlement and reward audit summaries.
 - Public `/staking` now accepts authenticated same-origin principal-lock
-  requests and lists owned locked positions.
+  requests, matured principal unlock requests, and reward settlement requests.
 - Admin `/admin/staking-products` provides local product command forms.
-- Admin `/admin/staking-positions` exposes matured principal unlock only.
+- Admin `/admin/staking-positions` exposes matured principal unlock and reward
+  settlement commands only.
 - Product commands still produce zero ledger journals and zero ledger entries.
 - No Service Role, remote Supabase, production credential, Solana package,
   wallet adapter, private key, mnemonic, client signing, mainnet RPC, or
   blockchain transfer was added.
 
-## Required After Principal Unlock
+## Required After Snapshot Reward Settlement
 
-1. Define fixed-term reward calculation and rounding.
-2. Define reward expense posting and claim rules.
-3. Add unstaking or early exit only if a later product decision requires it.
-4. Add additional administrator operational review actions where required.
-5. Add full pgTAP and local E2E regression for every new financial transition.
-6. Keep all units as atomic-unit strings and all postings inside the private
+1. Add unstaking or early exit only if a later product decision requires it.
+2. Define partial reward, reward reversal, or recurring accrual only in a later
+   scoped phase.
+3. Add additional administrator operational review actions where required.
+4. Add full pgTAP and local E2E regression for every new financial transition.
+5. Keep all units as atomic-unit strings and all postings inside the private
    ledger primitive.
 
 ## Explicitly Out Of Scope
 
-- Reward calculation
-- APY/APR display
+- Partial reward
+- Reward reversal
+- Daily accrual
+- Compound reward
+- Projected yield display
 - Unstaking
 - Early unlock
 - Partial unlock
 - Position cancellation
-- Reward claim
+- Repeated reward claim
 - External custody proof
 - Mainnet or production connectivity
 - Wallet address collection

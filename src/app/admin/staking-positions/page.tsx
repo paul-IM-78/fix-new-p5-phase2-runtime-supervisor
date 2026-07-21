@@ -10,6 +10,7 @@ import {
   listAdminStakingPositionCatalog,
   type AdminStakingPosition,
   type StakingPositionAuditEvent,
+  type StakingRewardAuditEvent,
 } from "@/server/admin/staking-position-reads";
 import { getCurrentAdminAccess } from "@/server/auth/admin-guard";
 
@@ -75,7 +76,7 @@ export default async function AdminStakingPositionsPage({
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
               AAL2 administrator read boundary for LOCKED staking positions
-              and principal-lock audit summaries.
+              plus principal unlock and one-time reward settlement commands.
             </p>
           </div>
         </header>
@@ -98,6 +99,7 @@ export default async function AdminStakingPositionsPage({
           <>
             <PositionTable positions={catalog.positions} />
             <AuditTable events={catalog.auditEvents} />
+            <RewardAuditTable events={catalog.rewardAuditEvents} />
           </>
         ) : (
           <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -118,10 +120,10 @@ function BoundaryNotice() {
         Read-only position operations
       </h2>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        This page does not unlock principal, calculate rewards, post reward
-        expense, cancel positions, display wallet addresses, or connect to
-        on-chain staking. It only exposes a matured principal unlock command
-        when a LOCKED position has reached maturity.
+        This page exposes matured principal unlock and one-time reward
+        settlement commands only. It does not accept reward amounts, display
+        external account identifiers, cancel positions, or connect to
+        on-chain staking.
       </p>
     </section>
   );
@@ -149,6 +151,7 @@ function PositionTable({
                 <th className="py-2 pr-4 font-medium">Locked</th>
                 <th className="py-2 pr-4 font-medium">Matures</th>
                 <th className="py-2 pr-4 font-medium">Unlocked</th>
+                <th className="py-2 pr-4 font-medium">Reward</th>
                 <th className="py-2 pr-4 font-medium">Snapshot</th>
                 <th className="py-2 pr-4 font-medium">Action</th>
               </tr>
@@ -193,12 +196,27 @@ function PositionTable({
                       : "Not unlocked"}
                   </td>
                   <td className="py-3 pr-4">
+                    <div>{position.rewardState}</div>
+                    <div className="mt-1 font-mono text-xs text-zinc-600">
+                      {formatAtomicUnitsForDisplay(
+                        position.calculatedRewardUnits,
+                      )}
+                    </div>
+                    {position.rewardSettledAt ? (
+                      <div className="mt-1 text-xs text-zinc-600">
+                        {formatTimestamp(position.rewardSettledAt)} /{" "}
+                        {position.rewardActorType ?? "UNKNOWN"}
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="py-3 pr-4">
                     v{position.productVersionSnapshot} /{" "}
                     {position.lockDurationDaysSnapshot}d /{" "}
                     {position.termRewardRatePpmSnapshot}ppm
                   </td>
                   <td className="min-w-72 py-3 pr-4">
                     <AdminUnlockForm position={position} />
+                    <AdminRewardForm position={position} />
                   </td>
                 </tr>
               ))}
@@ -222,7 +240,7 @@ function AdminUnlockForm({ position }: { position: AdminStakingPosition }) {
   if (position.status === "UNLOCKED") {
     return (
       <p className="text-sm leading-6 text-zinc-600">
-        Terminal. No further position mutation is available.
+        Principal terminal. Review reward state below.
       </p>
     );
   }
@@ -230,7 +248,7 @@ function AdminUnlockForm({ position }: { position: AdminStakingPosition }) {
   if (!canUnlock) {
     return (
       <p className="text-sm leading-6 text-zinc-600">
-        Early unlock, partial unlock, reward claim, and undo are unavailable.
+        Early unlock, partial unlock, and undo are unavailable.
       </p>
     );
   }
@@ -279,6 +297,71 @@ function AdminUnlockForm({ position }: { position: AdminStakingPosition }) {
   );
 }
 
+function AdminRewardForm({ position }: { position: AdminStakingPosition }) {
+  const canSettleReward =
+    position.status === "UNLOCKED" &&
+    position.rewardState === "CLAIMABLE";
+
+  if (position.rewardState === "PAID" || position.rewardState === "ZERO") {
+    return (
+      <p className="mt-3 text-sm leading-6 text-zinc-600">
+        Reward settlement is final.
+      </p>
+    );
+  }
+
+  if (!canSettleReward) {
+    return (
+      <p className="mt-3 text-sm leading-6 text-zinc-600">
+        Reward settlement is available after principal unlock.
+      </p>
+    );
+  }
+
+  return (
+    <form
+      action="/api/v1/admin/staking-positions/settle-reward"
+      className="mt-5 grid gap-3 border-t border-zinc-100 pt-5"
+      method="post"
+    >
+      <input
+        name="staking_position_id"
+        type="hidden"
+        value={position.stakingPositionId}
+      />
+      <input
+        name="position_expected_version"
+        type="hidden"
+        value={position.positionVersion}
+      />
+      <input name="command_id" type="hidden" value={randomUUID()} />
+      <label className="block">
+        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Reward reason
+        </span>
+        <input
+          className="mt-2 h-10 w-full border border-zinc-300 px-3 text-sm"
+          maxLength={500}
+          minLength={1}
+          name="reason"
+          required
+          type="text"
+        />
+      </label>
+      <button
+        className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white"
+        type="submit"
+      >
+        Settle reward
+      </button>
+      <p className="text-xs leading-5 text-zinc-600">
+        Uses the immutable position snapshot. Target inactive cleanup is
+        allowed by the DB command when ledger accounts remain valid.
+      </p>
+    </form>
+  );
+}
+
 function AuditTable({ events }: { events: StakingPositionAuditEvent[] }) {
   return (
     <section className="border border-zinc-200 p-5">
@@ -318,6 +401,57 @@ function AuditTable({ events }: { events: StakingPositionAuditEvent[] }) {
       ) : (
         <p className="mt-4 border border-zinc-100 p-5 text-sm text-zinc-600">
           No staking position audit events exist.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function RewardAuditTable({
+  events,
+}: {
+  events: StakingRewardAuditEvent[];
+}) {
+  return (
+    <section className="border border-zinc-200 p-5">
+      <h2 className="text-lg font-semibold">Reward command audit</h2>
+      {events.length > 0 ? (
+        <div className="mt-5 overflow-x-auto">
+          <table className="min-w-full border-collapse text-left text-sm">
+            <thead>
+              <tr className="border-b border-zinc-200 text-xs uppercase tracking-wide text-zinc-500">
+                <th className="py-2 pr-4 font-medium">Action</th>
+                <th className="py-2 pr-4 font-medium">Outcome</th>
+                <th className="py-2 pr-4 font-medium">Reward</th>
+                <th className="py-2 pr-4 font-medium">Actor</th>
+                <th className="py-2 pr-4 font-medium">Occurred</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((event) => (
+                <tr
+                  className="border-b border-zinc-100 align-top"
+                  key={event.eventId}
+                >
+                  <td className="py-3 pr-4">{event.action}</td>
+                  <td className="py-3 pr-4">
+                    {event.outcome} / {event.settlementOutcome}
+                  </td>
+                  <td className="py-3 pr-4 font-mono text-xs">
+                    {formatAtomicUnitsForDisplay(event.rewardUnits)}
+                  </td>
+                  <td className="py-3 pr-4">{event.actorType}</td>
+                  <td className="py-3 pr-4">
+                    {formatTimestamp(event.occurredAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-4 border border-zinc-100 p-5 text-sm text-zinc-600">
+          No staking reward audit events exist.
         </p>
       )}
     </section>

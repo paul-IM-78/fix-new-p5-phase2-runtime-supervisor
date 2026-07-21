@@ -30,7 +30,8 @@
     "test:phase3:closeout:local": "node scripts/phase/phase3-closeout.local.mjs",
     "test:staking:products:local": "node scripts/staking/staking-products.local.mjs",
     "test:staking:positions:local": "node scripts/staking/staking-positions.local.mjs",
-    "test:staking:position-unlock:local": "node scripts/staking/staking-position-unlock.local.mjs"
+    "test:staking:position-unlock:local": "node scripts/staking/staking-position-unlock.local.mjs",
+    "test:staking:rewards:local": "node scripts/staking/staking-rewards.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

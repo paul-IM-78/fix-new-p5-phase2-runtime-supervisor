@@ -6,6 +6,9 @@ import {
   validateStakingMaturityState,
   validateStakingPositionStatus,
   validateStakingPrincipalUnits,
+  validateStakingRewardSettlementOutcome,
+  validateStakingRewardState,
+  validateStakingRewardUnits,
 } from "@/lib/staking/validation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { inspectAccountAccess } from "@/server/auth/account-guard";
@@ -22,6 +25,13 @@ export type CreateStakingPositionInput = {
 };
 
 export type UnlockStakingPositionInput = {
+  stakingPositionId: string;
+  positionExpectedVersion: number;
+  walletExpectedVersion: number;
+  commandId: string;
+};
+
+export type SettleCurrentUserStakingRewardInput = {
   stakingPositionId: string;
   positionExpectedVersion: number;
   walletExpectedVersion: number;
@@ -57,6 +67,17 @@ export type StakingPositionUnlockCommandResult = {
   unlockedAt: string | null;
 };
 
+export type StakingRewardSettlementCommandResult = {
+  resultCode: string;
+  replayed: boolean;
+  stakingPositionId: string | null;
+  rewardSettlementId: string | null;
+  rewardState: "NOT_ELIGIBLE" | "CLAIMABLE" | "PAID" | "ZERO" | null;
+  settlementOutcome: "PAID" | "ZERO" | null;
+  rewardUnits: string | null;
+  settledAt: string | null;
+};
+
 export type StakingPositionCommandExecution =
   | { ok: true; result: StakingPositionCommandResult }
   | { ok: false; error: StakingPublicResultCode | PublicAuthErrorCode };
@@ -65,10 +86,16 @@ export type StakingPositionUnlockCommandExecution =
   | { ok: true; result: StakingPositionUnlockCommandResult }
   | { ok: false; error: StakingPublicResultCode | PublicAuthErrorCode };
 
+export type StakingRewardSettlementCommandExecution =
+  | { ok: true; result: StakingRewardSettlementCommandResult }
+  | { ok: false; error: StakingPublicResultCode | PublicAuthErrorCode };
+
 type CreatePositionRow =
   Database["public"]["Functions"]["create_user_staking_position"]["Returns"][number];
 type UnlockPositionRow =
   Database["public"]["Functions"]["unlock_current_user_staking_position"]["Returns"][number];
+type RewardSettlementRow =
+  Database["public"]["Functions"]["settle_current_user_staking_reward"]["Returns"][number];
 
 export async function createUserStakingPosition(
   input: CreateStakingPositionInput,
@@ -129,6 +156,35 @@ export async function unlockCurrentUserStakingPosition(
   return result
     ? { ok: true, result }
     : { ok: false, error: "staking_position_unavailable" };
+}
+
+export async function settleCurrentUserStakingReward(
+  input: SettleCurrentUserStakingRewardInput,
+): Promise<StakingRewardSettlementCommandExecution> {
+  const supabase = await createServerSupabaseClient();
+  const access = await inspectAccountAccess(supabase);
+
+  if (access.status !== "active") {
+    return { ok: false, error: mapAccountAccessError(access.status) };
+  }
+
+  const response = await supabase.rpc("settle_current_user_staking_reward", {
+    p_staking_position_id: input.stakingPositionId,
+    p_position_expected_version: input.positionExpectedVersion,
+    p_wallet_expected_version: input.walletExpectedVersion,
+    p_command_id: input.commandId,
+  });
+
+  if (response.error) {
+    return { ok: false, error: mapRewardRpcError(response.error) };
+  }
+
+  const row = response.data?.[0] ?? null;
+  const result = row ? normalizeRewardSettlementRow(row) : null;
+
+  return result
+    ? { ok: true, result }
+    : { ok: false, error: "staking_reward_unavailable" };
 }
 
 function normalizeCommandRow(
@@ -201,6 +257,47 @@ function normalizeUnlockCommandRow(
   };
 }
 
+function normalizeRewardSettlementRow(
+  row: RewardSettlementRow,
+): StakingRewardSettlementCommandResult | null {
+  if (typeof row.result_code !== "string") {
+    return null;
+  }
+
+  const rewardState =
+    row.reward_state === null
+      ? null
+      : validateStakingRewardState(row.reward_state);
+  const settlementOutcome =
+    row.settlement_outcome === null
+      ? null
+      : validateStakingRewardSettlementOutcome(row.settlement_outcome);
+  const rewardUnits =
+    row.reward_units === null
+      ? null
+      : validateStakingRewardUnits(row.reward_units);
+
+  if (
+    (row.reward_state !== null && !rewardState) ||
+    (row.settlement_outcome !== null && !settlementOutcome) ||
+    (row.reward_units !== null && !rewardUnits) ||
+    (row.settled_at !== null && Number.isNaN(Date.parse(row.settled_at)))
+  ) {
+    return null;
+  }
+
+  return {
+    resultCode: row.result_code,
+    replayed: row.replayed === true,
+    stakingPositionId: row.staking_position_id ?? null,
+    rewardSettlementId: row.reward_settlement_id ?? null,
+    rewardState,
+    settlementOutcome,
+    rewardUnits,
+    settledAt: row.settled_at ?? null,
+  };
+}
+
 function mapAccountAccessError(
   status: Exclude<
     Awaited<ReturnType<typeof inspectAccountAccess>>["status"],
@@ -225,4 +322,12 @@ function mapCommandRpcError(error: {
   return error.code === "42501"
     ? "staking_command_forbidden"
     : "staking_command_unavailable";
+}
+
+function mapRewardRpcError(error: {
+  code?: string;
+}): StakingPublicResultCode {
+  return error.code === "42501"
+    ? "staking_reward_forbidden"
+    : "staking_reward_unavailable";
 }

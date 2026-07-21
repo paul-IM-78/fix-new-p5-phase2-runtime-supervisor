@@ -5,6 +5,9 @@ import type { StakingPublicResultCode } from "@/lib/staking/public-results";
 import {
   validateStakingMaturityState,
   validateStakingPositionStatus,
+  validateStakingRewardSettlementOutcome,
+  validateStakingRewardState,
+  validateStakingRewardUnits,
 } from "@/lib/staking/validation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { inspectAdminAccess } from "@/server/auth/admin-guard";
@@ -14,6 +17,8 @@ type AdminPositionRow =
   Database["public"]["Functions"]["list_admin_staking_positions"]["Returns"][number];
 type PositionAuditRow =
   Database["public"]["Functions"]["list_staking_position_command_audit_events"]["Returns"][number];
+type RewardAuditRow =
+  Database["public"]["Functions"]["list_staking_reward_command_audit_events"]["Returns"][number];
 
 export type AdminStakingPosition = {
   stakingPositionId: string;
@@ -33,6 +38,14 @@ export type AdminStakingPosition = {
   unlockActorType: "USER" | "ADMIN" | null;
   unlockedBy: string | null;
   unlockedAt: string | null;
+  rewardState: "NOT_ELIGIBLE" | "CLAIMABLE" | "PAID" | "ZERO";
+  calculatedRewardUnits: string;
+  rewardSettlementId: string | null;
+  settlementOutcome: "PAID" | "ZERO" | null;
+  rewardActorType: "USER" | "ADMIN" | null;
+  settledBy: string | null;
+  rewardSettledAt: string | null;
+  rewardJournalId: string | null;
   productVersionSnapshot: number;
   lockDurationDaysSnapshot: number;
   termRewardRatePpmSnapshot: number;
@@ -65,11 +78,32 @@ export type StakingPositionAuditEvent = {
   occurredAt: string;
 };
 
+export type StakingRewardAuditEvent = {
+  eventId: string;
+  commandId: string;
+  action: string;
+  outcome: string;
+  actorUserId: string;
+  actorType: string;
+  targetUserId: string;
+  walletAccountId: string;
+  stakingProductId: string;
+  stakingPositionId: string;
+  rewardSettlementId: string;
+  projectId: string;
+  assetId: string;
+  resultingJournalId: string | null;
+  rewardUnits: string;
+  settlementOutcome: "PAID" | "ZERO";
+  occurredAt: string;
+};
+
 export type AdminStakingPositionReadResult =
   | {
       ok: true;
       positions: AdminStakingPosition[];
       auditEvents: StakingPositionAuditEvent[];
+      rewardAuditEvents: StakingRewardAuditEvent[];
     }
   | { ok: false; error: StakingPublicResultCode | PublicAuthErrorCode };
 
@@ -81,10 +115,13 @@ export async function listAdminStakingPositionCatalog(): Promise<AdminStakingPos
     return { ok: false, error: mapAdminAccessError(access.status) };
   }
 
-  const [positions, auditEvents] = await Promise.all([
+  const [positions, auditEvents, rewardAuditEvents] = await Promise.all([
     supabase.rpc("list_admin_staking_positions", { p_limit: 100 }),
     supabase.rpc("list_staking_position_command_audit_events", {
       p_limit: 50,
+    }),
+    supabase.rpc("list_staking_reward_command_audit_events", {
+      p_limit: 25,
     }),
   ]);
 
@@ -96,10 +133,17 @@ export async function listAdminStakingPositionCatalog(): Promise<AdminStakingPos
     return { ok: false, error: "staking_audit_unavailable" };
   }
 
+  if (rewardAuditEvents.error) {
+    return { ok: false, error: "staking_reward_audit_unavailable" };
+  }
+
   return {
     ok: true,
     positions: (positions.data ?? []).map(normalizePositionRow),
     auditEvents: (auditEvents.data ?? []).map(normalizeAuditRow),
+    rewardAuditEvents: (rewardAuditEvents.data ?? []).map(
+      normalizeRewardAuditRow,
+    ),
   };
 }
 
@@ -107,6 +151,14 @@ function normalizePositionRow(row: AdminPositionRow): AdminStakingPosition {
   const status = validateStakingPositionStatus(row.status) ?? "LOCKED";
   const maturityState =
     validateStakingMaturityState(row.maturity_state) ?? "LOCKED";
+  const rewardState =
+    validateStakingRewardState(row.reward_state) ?? "NOT_ELIGIBLE";
+  const calculatedRewardUnits =
+    validateStakingRewardUnits(row.calculated_reward_units) ?? "0";
+  const settlementOutcome =
+    row.settlement_outcome === null
+      ? null
+      : validateStakingRewardSettlementOutcome(row.settlement_outcome);
 
   return {
     stakingPositionId: row.staking_position_id,
@@ -128,6 +180,16 @@ function normalizePositionRow(row: AdminPositionRow): AdminStakingPosition {
       : null,
     unlockedBy: row.unlocked_by ?? null,
     unlockedAt: row.unlocked_at ?? null,
+    rewardState,
+    calculatedRewardUnits,
+    rewardSettlementId: row.reward_settlement_id ?? null,
+    settlementOutcome,
+    rewardActorType: isRewardActorType(row.reward_actor_type)
+      ? row.reward_actor_type
+      : null,
+    settledBy: row.settled_by ?? null,
+    rewardSettledAt: row.reward_settled_at ?? null,
+    rewardJournalId: row.reward_journal_id ?? null,
     productVersionSnapshot: row.product_version_snapshot,
     lockDurationDaysSnapshot: row.lock_duration_days_snapshot,
     termRewardRatePpmSnapshot: row.term_reward_rate_ppm_snapshot,
@@ -166,7 +228,37 @@ function normalizeAuditRow(row: PositionAuditRow): StakingPositionAuditEvent {
   };
 }
 
+function normalizeRewardAuditRow(
+  row: RewardAuditRow,
+): StakingRewardAuditEvent {
+  return {
+    eventId: row.event_id,
+    commandId: row.command_id,
+    action: row.action,
+    outcome: row.outcome,
+    actorUserId: row.actor_user_id,
+    actorType: row.actor_type,
+    targetUserId: row.target_user_id,
+    walletAccountId: row.wallet_account_id,
+    stakingProductId: row.staking_product_id,
+    stakingPositionId: row.staking_position_id,
+    rewardSettlementId: row.reward_settlement_id,
+    projectId: row.project_id,
+    assetId: row.asset_id,
+    resultingJournalId: row.resulting_journal_id ?? null,
+    rewardUnits: validateStakingRewardUnits(row.reward_units) ?? "0",
+    settlementOutcome:
+      validateStakingRewardSettlementOutcome(row.settlement_outcome) ??
+      "ZERO",
+    occurredAt: row.occurred_at,
+  };
+}
+
 function isUnlockActorType(value: unknown): value is "USER" | "ADMIN" {
+  return value === "USER" || value === "ADMIN";
+}
+
+function isRewardActorType(value: unknown): value is "USER" | "ADMIN" {
   return value === "USER" || value === "ADMIN";
 }
 
