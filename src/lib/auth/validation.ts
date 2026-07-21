@@ -11,6 +11,7 @@ const SAFE_AUTH_NEXT_PATHS = new Set([
   "/catalog",
   "/wallet",
   "/balances",
+  "/staking",
   "/deposits",
   "/withdrawals",
   "/admin",

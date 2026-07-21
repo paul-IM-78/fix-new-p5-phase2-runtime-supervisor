@@ -2,12 +2,11 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 3 double-entry ledger with AAL2 administrator Opening
-Balance commands, exact Opening reversal, local manual deposit request state
-machine commands, local manual withdrawal request state machine commands,
-immutable financial audit, calculated balance views, and read-only user/admin
-balance summaries. Phase 3 now includes the user-facing `/balances` read view
-and a full local Phase 3 closeout regression script.
+Current phase: Phase 4 staking product domain. Phase 3 double-entry ledger
+flows remain intact, and Phase 4 now adds read-only staking product catalog
+metadata plus AAL2 administrator product lifecycle commands. Staking requests,
+principal locking, position creation, rewards, unstaking, and chain
+integration remain out of scope.
 
 ## Stack
 
@@ -48,6 +47,7 @@ npm run test:ledger:withdrawals:local
 npm run test:ledger:withdrawal-execution:local
 npm run test:ledger:balance-overview:local
 npm run test:phase3:closeout:local
+npm run test:staking:products:local
 ```
 
 ## Supabase Local
@@ -589,6 +589,41 @@ and a production Next.js server on `http://localhost:3000`:
 
 ```bash
 npm run test:phase3:closeout:local
+```
+
+## Staking Product Domain
+
+Phase 4 starts with staking product metadata only:
+
+```text
+GET /staking
+GET /admin/staking-products
+POST /api/v1/admin/staking-products/create
+POST /api/v1/admin/staking-products/update-draft
+POST /api/v1/admin/staking-products/transition
+```
+
+The database stores product rows in `private.staking_products` and immutable
+administrator audit rows in `private.staking_product_admin_audit_events`.
+Commands require ACTIVE ADMIN plus current AAL2 inside PostgreSQL, use
+caller-supplied command IDs for idempotent replay, freeze product terms after
+first activation, and validate that activation uses the current ACTIVE SOLANA
+SPL project token.
+
+`/staking` is a read-only product catalog. It shows fixed term PPM metadata
+but does not display APY/APR, expected rewards, staking forms, wallet
+addresses, transaction IDs, claims, unlocks, or position state. Product
+commands do not create ledger accounts, post ledger journals, move balances,
+lock principal, create staking positions, calculate rewards, call Solana, or
+sign transactions.
+
+Run the local staking product regression after starting local Supabase,
+resetting the DB, and building. If `APP_ORIGIN` is not provided, the script
+starts a temporary production Next.js server on `http://localhost:3010` and
+stops it after the smoke.
+
+```bash
+npm run test:staking:products:local
 ```
 
 ## Health Route

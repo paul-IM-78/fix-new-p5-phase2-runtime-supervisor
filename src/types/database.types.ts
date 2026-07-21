@@ -434,6 +434,34 @@ export type Database = {
           result_code: string
         }[]
       }
+      create_staking_product: {
+        Args: {
+          p_asset_id: string
+          p_command_id: string
+          p_description: string
+          p_display_name: string
+          p_enrollment_ends_at: string
+          p_enrollment_starts_at: string
+          p_lock_duration_days: number
+          p_max_stake_units: string
+          p_min_stake_units: string
+          p_product_code: string
+          p_project_id: string
+          p_reason: string
+          p_term_reward_rate_ppm: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+          staking_product_id: string
+        }[]
+      }
       create_supported_asset: {
         Args: {
           p_asset_code: string
@@ -645,6 +673,42 @@ export type Database = {
           target_user_id: string
         }[]
       }
+      list_admin_staking_products: {
+        Args: { p_limit?: number; p_status?: string }
+        Returns: {
+          activated_at: string
+          archived_at: string
+          asset_code: string
+          asset_decimals: number
+          asset_id: string
+          asset_network: string
+          asset_status: string
+          asset_symbol: string
+          asset_type: string
+          created_at: string
+          current_project_token: boolean
+          description: string
+          display_name: string
+          enrollment_ends_at: string
+          enrollment_starts_at: string
+          enrollment_state: string
+          lock_duration_days: number
+          max_stake_units: string
+          min_stake_units: string
+          product_code: string
+          project_code: string
+          project_display_name: string
+          project_id: string
+          project_status: string
+          reward_rounding_mode: string
+          staking_product_id: string
+          status: string
+          suspended_at: string
+          term_reward_rate_ppm: number
+          updated_at: string
+          version: number
+        }[]
+      }
       list_admin_supported_assets: {
         Args: { p_limit?: number }
         Returns: {
@@ -727,6 +791,31 @@ export type Database = {
           wallet_account_id: string
           wallet_status: string
           withdrawal_request_id: string
+        }[]
+      }
+      list_current_staking_products: {
+        Args: { p_limit?: number }
+        Returns: {
+          asset_code: string
+          asset_decimals: number
+          asset_id: string
+          asset_symbol: string
+          description: string
+          display_name: string
+          enrollment_ends_at: string
+          enrollment_starts_at: string
+          enrollment_state: string
+          lock_duration_days: number
+          max_stake_units: string
+          min_stake_units: string
+          product_code: string
+          product_version: number
+          project_code: string
+          project_display_name: string
+          project_id: string
+          reward_rounding_mode: string
+          staking_product_id: string
+          term_reward_rate_ppm: number
         }[]
       }
       list_current_user_deposit_requests: {
@@ -846,6 +935,24 @@ export type Database = {
           target_user_id: string
           units_text: string
           wallet_account_id: string
+        }[]
+      }
+      list_staking_product_admin_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previous_status: string
+          project_id: string
+          reason: string
+          resulting_status: string
+          staking_product_id: string
         }[]
       }
       list_wallet_account_admin_audit_events: {
@@ -1072,6 +1179,26 @@ export type Database = {
           result_code: string
         }[]
       }
+      transition_staking_product_status: {
+        Args: {
+          p_command_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_reason: string
+          p_staking_product_id: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+          staking_product_id: string
+        }[]
+      }
       transition_supported_asset_status: {
         Args: {
           p_asset_id: string
@@ -1130,6 +1257,35 @@ export type Database = {
           project_id: string
           replayed: boolean
           result_code: string
+        }[]
+      }
+      update_staking_product_draft: {
+        Args: {
+          p_asset_id: string
+          p_command_id: string
+          p_description: string
+          p_display_name: string
+          p_enrollment_ends_at: string
+          p_enrollment_starts_at: string
+          p_expected_version: number
+          p_lock_duration_days: number
+          p_max_stake_units: string
+          p_min_stake_units: string
+          p_project_id: string
+          p_reason: string
+          p_staking_product_id: string
+          p_term_reward_rate_ppm: number
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          project_id: string
+          replayed: boolean
+          result_code: string
+          staking_product_id: string
         }[]
       }
       update_supported_asset_details: {

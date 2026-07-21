@@ -104,6 +104,12 @@ export default async function AccountPage() {
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/staking"
+          >
+            Staking
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
             href="/deposits"
           >
             Deposits

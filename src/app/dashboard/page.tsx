@@ -79,6 +79,7 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             <DashboardLink href="/catalog">Catalog</DashboardLink>
             <DashboardLink href="/wallet">Wallet</DashboardLink>
             <DashboardLink href="/balances">Balances</DashboardLink>
+            <DashboardLink href="/staking">Staking</DashboardLink>
             <DashboardLink href="/deposits">Deposits</DashboardLink>
             <DashboardLink href="/withdrawals">Withdrawals</DashboardLink>
           </nav>
@@ -108,6 +109,21 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             href="/balances"
           >
             Balances
+          </Link>
+        </section>
+
+        <section className="border border-zinc-200 p-5">
+          <h2 className="text-base font-semibold">Staking products</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Review active and upcoming product terms. Staking requests,
+            reward calculation, and principal locking are not implemented on
+            the dashboard.
+          </p>
+          <Link
+            className="mt-4 inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/staking"
+          >
+            Staking products
           </Link>
         </section>
 

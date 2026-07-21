@@ -66,6 +66,7 @@ function BalancesView({ overview }: { overview: ReadyOverview }) {
             <BalanceLink href="/dashboard">Dashboard</BalanceLink>
             <BalanceLink href="/account">Account</BalanceLink>
             <BalanceLink href="/wallet">Wallet</BalanceLink>
+            <BalanceLink href="/staking">Staking</BalanceLink>
             <BalanceLink href="/deposits">Deposits</BalanceLink>
             <BalanceLink href="/withdrawals">Withdrawals</BalanceLink>
           </nav>
@@ -122,6 +123,10 @@ function BoundaryNotice() {
       <p className="mt-2 text-sm leading-6 text-amber-900">
         The page does not combine different assets, calculate external value,
         estimate yield, or display external transfer proof.
+      </p>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Locked Atomic Units are the future staking principal bucket. A locked
+        value by itself does not mean a staking position exists in this phase.
       </p>
     </section>
   );
