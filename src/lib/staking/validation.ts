@@ -14,6 +14,13 @@ export type StakingProductStatus =
   | "SUSPENDED"
   | "ARCHIVED";
 
+export type StakingPositionStatus = "LOCKED" | "UNLOCKED";
+
+export type StakingPositionMaturityState =
+  | "LOCKED"
+  | "MATURED"
+  | "UNLOCKED";
+
 export function validateStakingEntityId(value: unknown): string | null {
   return validateUuid(value);
 }
@@ -167,6 +174,42 @@ export function normalizeStakingCommandReason(
     normalized.length <= 500 &&
     !CONTROL_CHARACTER_PATTERN.test(normalized) &&
     !CREDENTIAL_REASON_PATTERN.test(normalized)
+    ? normalized
+    : null;
+}
+
+export function normalizeAdminStakingPositionUnlockReason(
+  value: unknown,
+): string | null {
+  return normalizeStakingCommandReason(value);
+}
+
+export function validateStakingPositionStatus(
+  value: unknown,
+): StakingPositionStatus | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized === "LOCKED" || normalized === "UNLOCKED"
+    ? normalized
+    : null;
+}
+
+export function validateStakingMaturityState(
+  value: unknown,
+): StakingPositionMaturityState | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized === "LOCKED" ||
+    normalized === "MATURED" ||
+    normalized === "UNLOCKED"
     ? normalized
     : null;
 }

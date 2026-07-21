@@ -5,6 +5,10 @@ import {
   isCanonicalNonNegativeAtomicUnits,
   isPositiveAtomicUnits,
 } from "@/lib/ledger/atomic-units";
+import {
+  validateStakingMaturityState,
+  validateStakingPositionStatus,
+} from "@/lib/staking/validation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { inspectAccountAccess } from "@/server/auth/account-guard";
 import type { Database } from "@/types/database.types";
@@ -78,13 +82,16 @@ export type CurrentStakingPosition = {
   assetSymbol: string;
   assetDecimals: number;
   principalUnits: string;
-  status: "LOCKED";
+  status: "LOCKED" | "UNLOCKED";
+  maturityState: "LOCKED" | "MATURED" | "UNLOCKED";
   productVersionSnapshot: number;
   lockDurationDaysSnapshot: number;
   termRewardRatePpmSnapshot: number;
   rewardRoundingModeSnapshot: "FLOOR";
   lockedAt: string;
   maturesAt: string;
+  unlockedAt: string | null;
+  unlockActorType: "USER" | "ADMIN" | null;
   positionVersion: number;
 };
 
@@ -351,6 +358,9 @@ function normalizePositions(
 }
 
 function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
+  const status = validateStakingPositionStatus(row.status);
+  const maturityState = validateStakingMaturityState(row.maturity_state);
+
   if (
     !isSafeText(row.product_code, 64) ||
     !isSafeText(row.product_display_name, 100) ||
@@ -360,13 +370,16 @@ function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
     !isSafeText(row.asset_symbol, 64) ||
     !isSafeDecimals(row.asset_decimals) ||
     !isPositiveAtomicUnits(row.principal_units) ||
-    row.status !== "LOCKED" ||
+    !status ||
+    !maturityState ||
     !isSafeInteger(row.product_version_snapshot, 1, Number.MAX_SAFE_INTEGER) ||
     !isSafeInteger(row.lock_duration_days_snapshot, 1, 3650) ||
     !isSafeInteger(row.term_reward_rate_ppm_snapshot, 1, 1000000) ||
     row.reward_rounding_mode_snapshot !== "FLOOR" ||
     !isValidIsoDate(row.locked_at) ||
     !isValidIsoDate(row.matures_at) ||
+    (row.unlocked_at !== null && !isValidIsoDate(row.unlocked_at)) ||
+    !isUnlockActorTypeOrNull(row.unlock_actor_type) ||
     !isSafeInteger(row.position_version, 1, Number.MAX_SAFE_INTEGER)
   ) {
     return null;
@@ -385,13 +398,16 @@ function normalizePosition(row: PositionRow): CurrentStakingPosition | null {
     assetSymbol: row.asset_symbol,
     assetDecimals: row.asset_decimals,
     principalUnits: row.principal_units,
-    status: row.status,
+    status,
+    maturityState,
     productVersionSnapshot: row.product_version_snapshot,
     lockDurationDaysSnapshot: row.lock_duration_days_snapshot,
     termRewardRatePpmSnapshot: row.term_reward_rate_ppm_snapshot,
     rewardRoundingModeSnapshot: row.reward_rounding_mode_snapshot,
     lockedAt: row.locked_at,
     maturesAt: row.matures_at,
+    unlockedAt: row.unlocked_at ?? null,
+    unlockActorType: row.unlock_actor_type ?? null,
     positionVersion: row.position_version,
   };
 }
@@ -402,6 +418,12 @@ function isWalletStatus(value: string): value is WalletStatus {
 
 function isEnrollmentState(value: string): value is "UPCOMING" | "OPEN" {
   return value === "UPCOMING" || value === "OPEN";
+}
+
+function isUnlockActorTypeOrNull(
+  value: unknown,
+): value is "USER" | "ADMIN" | null {
+  return value === null || value === "USER" || value === "ADMIN";
 }
 
 function isSafeText(value: string, maxLength: number): boolean {

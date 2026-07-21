@@ -711,6 +711,7 @@ export type Database = {
           lock_duration_days_snapshot: number
           locked_at: string
           matures_at: string
+          maturity_state: string
           position_version: number
           principal_units: string
           product_code: string
@@ -723,6 +724,9 @@ export type Database = {
           staking_product_id: string
           status: string
           term_reward_rate_ppm_snapshot: number
+          unlock_actor_type: string
+          unlocked_at: string
+          unlocked_by: string
           user_id: string
           wallet_account_id: string
           wallet_status: string
@@ -918,6 +922,7 @@ export type Database = {
           lock_duration_days_snapshot: number
           locked_at: string
           matures_at: string
+          maturity_state: string
           position_version: number
           principal_units: string
           product_code: string
@@ -931,6 +936,8 @@ export type Database = {
           staking_product_id: string
           status: string
           term_reward_rate_ppm_snapshot: number
+          unlock_actor_type: string
+          unlocked_at: string
         }[]
       }
       list_current_user_withdrawal_requests: {
@@ -1021,6 +1028,7 @@ export type Database = {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
           action: string
+          actor_type: string
           actor_user_id: string
           asset_id: string
           command_id: string
@@ -1028,9 +1036,11 @@ export type Database = {
           event_id: string
           occurred_at: string
           outcome: string
+          previous_status: string
           principal_units: string
           project_id: string
           reason: string
+          resulting_journal_id: string
           resulting_status: string
           staking_position_id: string
           staking_product_id: string
@@ -1336,6 +1346,42 @@ export type Database = {
           result_code: string
           target_user_id: string
           wallet_account_id: string
+        }[]
+      }
+      unlock_current_user_staking_position: {
+        Args: {
+          p_command_id: string
+          p_position_expected_version: number
+          p_staking_position_id: string
+          p_wallet_expected_version: number
+        }
+        Returns: {
+          maturity_state: string
+          position_status: string
+          position_version: number
+          principal_units: string
+          replayed: boolean
+          result_code: string
+          staking_position_id: string
+          unlocked_at: string
+        }[]
+      }
+      unlock_staking_position_as_admin: {
+        Args: {
+          p_command_id: string
+          p_position_expected_version: number
+          p_reason: string
+          p_staking_position_id: string
+        }
+        Returns: {
+          maturity_state: string
+          position_status: string
+          position_version: number
+          principal_units: string
+          replayed: boolean
+          result_code: string
+          staking_position_id: string
+          unlocked_at: string
         }[]
       }
       update_project_details: {

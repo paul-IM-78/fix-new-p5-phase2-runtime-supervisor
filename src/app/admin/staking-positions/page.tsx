@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -11,10 +13,16 @@ import {
 } from "@/server/admin/staking-position-reads";
 import { getCurrentAdminAccess } from "@/server/auth/admin-guard";
 
+type AdminStakingPositionsPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default async function AdminStakingPositionsPage() {
+export default async function AdminStakingPositionsPage({
+  searchParams,
+}: AdminStakingPositionsPageProps) {
   const adminAccess = await getCurrentAdminAccess();
 
   if (adminAccess.status === "anonymous") {
@@ -46,6 +54,13 @@ export default async function AdminStakingPositionsPage() {
   }
 
   const catalog = await listAdminStakingPositionCatalog();
+  const params = await searchParams;
+  const resultMessage = getStakingPublicMessage(
+    getSingleValue(params.result),
+  );
+  const errorMessage =
+    getStakingPublicMessage(getSingleValue(params.error)) ??
+    getPublicAuthErrorMessage(getSingleValue(params.error));
 
   return (
     <main className="min-h-screen bg-white px-6 py-10 text-zinc-950">
@@ -66,6 +81,18 @@ export default async function AdminStakingPositionsPage() {
         </header>
 
         <BoundaryNotice />
+
+        {resultMessage ? (
+          <p className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {resultMessage}
+          </p>
+        ) : null}
+
+        {errorMessage ? (
+          <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {errorMessage}
+          </p>
+        ) : null}
 
         {catalog.ok ? (
           <>
@@ -93,7 +120,8 @@ function BoundaryNotice() {
       <p className="mt-2 text-sm leading-6 text-amber-900">
         This page does not unlock principal, calculate rewards, post reward
         expense, cancel positions, display wallet addresses, or connect to
-        on-chain staking.
+        on-chain staking. It only exposes a matured principal unlock command
+        when a LOCKED position has reached maturity.
       </p>
     </section>
   );
@@ -117,9 +145,12 @@ function PositionTable({
                 <th className="py-2 pr-4 font-medium">Asset</th>
                 <th className="py-2 pr-4 font-medium">Principal</th>
                 <th className="py-2 pr-4 font-medium">Status</th>
+                <th className="py-2 pr-4 font-medium">Maturity</th>
                 <th className="py-2 pr-4 font-medium">Locked</th>
                 <th className="py-2 pr-4 font-medium">Matures</th>
+                <th className="py-2 pr-4 font-medium">Unlocked</th>
                 <th className="py-2 pr-4 font-medium">Snapshot</th>
+                <th className="py-2 pr-4 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -149,6 +180,7 @@ function PositionTable({
                     {formatAtomicUnitsForDisplay(position.principalUnits)}
                   </td>
                   <td className="py-3 pr-4">{position.status}</td>
+                  <td className="py-3 pr-4">{position.maturityState}</td>
                   <td className="py-3 pr-4">
                     {formatTimestamp(position.lockedAt)}
                   </td>
@@ -156,9 +188,17 @@ function PositionTable({
                     {formatTimestamp(position.maturesAt)}
                   </td>
                   <td className="py-3 pr-4">
+                    {position.unlockedAt
+                      ? `${formatTimestamp(position.unlockedAt)} / ${position.unlockActorType ?? "UNKNOWN"}`
+                      : "Not unlocked"}
+                  </td>
+                  <td className="py-3 pr-4">
                     v{position.productVersionSnapshot} /{" "}
                     {position.lockDurationDaysSnapshot}d /{" "}
                     {position.termRewardRatePpmSnapshot}ppm
+                  </td>
+                  <td className="min-w-72 py-3 pr-4">
+                    <AdminUnlockForm position={position} />
                   </td>
                 </tr>
               ))}
@@ -171,6 +211,71 @@ function PositionTable({
         </p>
       )}
     </section>
+  );
+}
+
+function AdminUnlockForm({ position }: { position: AdminStakingPosition }) {
+  const canUnlock =
+    position.status === "LOCKED" &&
+    position.maturityState === "MATURED";
+
+  if (position.status === "UNLOCKED") {
+    return (
+      <p className="text-sm leading-6 text-zinc-600">
+        Terminal. No further position mutation is available.
+      </p>
+    );
+  }
+
+  if (!canUnlock) {
+    return (
+      <p className="text-sm leading-6 text-zinc-600">
+        Early unlock, partial unlock, reward claim, and undo are unavailable.
+      </p>
+    );
+  }
+
+  return (
+    <form
+      action="/api/v1/admin/staking-positions/unlock"
+      className="grid gap-3"
+      method="post"
+    >
+      <input
+        name="staking_position_id"
+        type="hidden"
+        value={position.stakingPositionId}
+      />
+      <input
+        name="position_expected_version"
+        type="hidden"
+        value={position.positionVersion}
+      />
+      <input name="command_id" type="hidden" value={randomUUID()} />
+      <label className="block">
+        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+          Reason
+        </span>
+        <input
+          className="mt-2 h-10 w-full border border-zinc-300 px-3 text-sm"
+          maxLength={500}
+          minLength={1}
+          name="reason"
+          required
+          type="text"
+        />
+      </label>
+      <button
+        className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white"
+        type="submit"
+      >
+        Unlock principal
+      </button>
+      <p className="text-xs leading-5 text-zinc-600">
+        Principal only. Target inactive cleanup is allowed by the DB command
+        when ledger accounts remain valid.
+      </p>
+    </form>
   );
 }
 
@@ -223,6 +328,10 @@ function shortIdentifier(value: string): string {
   return value.length > 14
     ? `${value.slice(0, 6)}...${value.slice(-6)}`
     : value;
+}
+
+function getSingleValue(value: string | string[] | undefined): string | null {
+  return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
 
 function formatTimestamp(value: string): string {

@@ -2,6 +2,10 @@ import "server-only";
 
 import type { PublicAuthErrorCode } from "@/lib/auth/public-errors";
 import type { StakingPublicResultCode } from "@/lib/staking/public-results";
+import {
+  validateStakingMaturityState,
+  validateStakingPositionStatus,
+} from "@/lib/staking/validation";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { inspectAdminAccess } from "@/server/auth/admin-guard";
 import type { Database } from "@/types/database.types";
@@ -24,7 +28,11 @@ export type AdminStakingPosition = {
   walletAccountId: string;
   userId: string;
   principalUnits: string;
-  status: "LOCKED";
+  status: "LOCKED" | "UNLOCKED";
+  maturityState: "LOCKED" | "MATURED" | "UNLOCKED";
+  unlockActorType: "USER" | "ADMIN" | null;
+  unlockedBy: string | null;
+  unlockedAt: string | null;
   productVersionSnapshot: number;
   lockDurationDaysSnapshot: number;
   termRewardRatePpmSnapshot: number;
@@ -42,12 +50,15 @@ export type StakingPositionAuditEvent = {
   action: string;
   outcome: string;
   actorUserId: string;
+  actorType: string;
   walletAccountId: string;
   stakingProductId: string;
   stakingPositionId: string;
   projectId: string;
   assetId: string;
+  resultingJournalId: string;
   reason: string;
+  previousStatus: string | null;
   principalUnits: string;
   resultingStatus: string;
   entityVersion: number;
@@ -93,6 +104,10 @@ export async function listAdminStakingPositionCatalog(): Promise<AdminStakingPos
 }
 
 function normalizePositionRow(row: AdminPositionRow): AdminStakingPosition {
+  const status = validateStakingPositionStatus(row.status) ?? "LOCKED";
+  const maturityState =
+    validateStakingMaturityState(row.maturity_state) ?? "LOCKED";
+
   return {
     stakingPositionId: row.staking_position_id,
     stakingProductId: row.staking_product_id,
@@ -106,7 +121,13 @@ function normalizePositionRow(row: AdminPositionRow): AdminStakingPosition {
     walletAccountId: row.wallet_account_id,
     userId: row.user_id,
     principalUnits: row.principal_units,
-    status: row.status === "LOCKED" ? row.status : "LOCKED",
+    status,
+    maturityState,
+    unlockActorType: isUnlockActorType(row.unlock_actor_type)
+      ? row.unlock_actor_type
+      : null,
+    unlockedBy: row.unlocked_by ?? null,
+    unlockedAt: row.unlocked_at ?? null,
     productVersionSnapshot: row.product_version_snapshot,
     lockDurationDaysSnapshot: row.lock_duration_days_snapshot,
     termRewardRatePpmSnapshot: row.term_reward_rate_ppm_snapshot,
@@ -129,17 +150,24 @@ function normalizeAuditRow(row: PositionAuditRow): StakingPositionAuditEvent {
     action: row.action,
     outcome: row.outcome,
     actorUserId: row.actor_user_id,
+    actorType: row.actor_type,
     walletAccountId: row.wallet_account_id,
     stakingProductId: row.staking_product_id,
     stakingPositionId: row.staking_position_id,
     projectId: row.project_id,
     assetId: row.asset_id,
+    resultingJournalId: row.resulting_journal_id,
     reason: row.reason,
+    previousStatus: row.previous_status ?? null,
     principalUnits: row.principal_units,
     resultingStatus: row.resulting_status,
     entityVersion: row.entity_version,
     occurredAt: row.occurred_at,
   };
+}
+
+function isUnlockActorType(value: unknown): value is "USER" | "ADMIN" {
+  return value === "USER" || value === "ADMIN";
 }
 
 function mapAdminAccessError(

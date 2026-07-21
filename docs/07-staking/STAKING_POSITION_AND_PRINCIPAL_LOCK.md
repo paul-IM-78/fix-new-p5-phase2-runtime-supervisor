@@ -1,8 +1,8 @@
 # Staking Position And Principal Lock
 
-NEW-P4-T02 adds the first staking position boundary for the managed staking
-wallet. The implementation creates `LOCKED` positions only and atomically moves
-principal from user available units to user locked units.
+NEW-P4-T02 added the first staking position boundary for the managed staking
+wallet. NEW-P4-T03 extends that boundary with matured principal unlock while
+preserving the original principal-lock invariant.
 
 ## Scope
 
@@ -18,23 +18,31 @@ principal from user available units to user locked units.
   read RPCs.
 - `/staking` lets an authenticated active user create a principal lock and view
   owned locked positions.
-- `/admin/staking-positions` is read-only operational review.
+- `/admin/staking-positions` is AAL2 operational review and matured principal
+  unlock.
 
-This phase does not implement maturity processing, principal unlock, position
-cancel, reward calculation, reward posting, reward claim, wallet addresses,
+This phase does not implement early unlock, partial unlock, position cancel,
+reward calculation, reward posting, reward claim, wallet addresses,
 transaction IDs, client signing, service-role application access, remote
 Supabase, mainnet, or production connectivity.
 
 ## Position Status
 
-The only position status created in this phase is:
+Position creation still creates only:
 
 ```text
 LOCKED
 ```
 
-Future statuses must be added by forward-only migrations. Existing locked
-positions are not automatically cancelled, unlocked, or rewarded by this task.
+NEW-P4-T03 adds the only supported forward transition:
+
+```text
+LOCKED -> UNLOCKED
+```
+
+`UNLOCKED` requires `unlock_journal_id`, `unlocked_by`, `unlock_actor_type`,
+and `unlocked_at`. The database requires `unlocked_at >= matures_at`.
+`UNLOCKED` is terminal and cannot transition back to `LOCKED`.
 
 ## Principal Units
 
@@ -109,7 +117,41 @@ The result is:
 - System accounts stay unchanged
 - Reward expense stays unchanged
 
-Unlock and reward postings are explicitly absent.
+## Unlock Posting
+
+Principal unlock posts exactly one journal after PostgreSQL database time
+reaches `matures_at`.
+
+User self-service unlock:
+
+```text
+Journal type:   USER_STAKING_POSITION_UNLOCKED
+Initiator type: USER
+Reference type: STAKING_POSITION
+```
+
+AAL2 administrator unlock:
+
+```text
+Journal type:   ADMIN_STAKING_POSITION_UNLOCKED
+Initiator type: ADMIN
+Reference type: STAKING_POSITION
+```
+
+Both journal shapes have exactly two user liability entries:
+
+```text
+DEBIT  USER_LOCKED
+CREDIT USER_AVAILABLE
+```
+
+The result is:
+
+- Locked decreases
+- Available increases
+- Total liability stays unchanged
+- System accounts stay unchanged
+- Reward expense stays unchanged
 
 ## Atomicity
 
@@ -120,9 +162,10 @@ staking-wallet-web:staking-position-command:v1
 ```
 
 Product row locking, wallet row locking, ledger account row locking, private
-posting, position insert, and audit insert happen in one transaction. The
-system must not create a position without its lock journal, or a lock journal
-without its position audit.
+posting, position insert/update, and audit insert happen in one transaction.
+The system must not create a position without its lock journal, unlock a
+position without its unlock journal, or create a position lifecycle journal
+without position audit.
 
 ## Idempotency
 
@@ -142,10 +185,26 @@ STAKING_POSITION_COMMAND_ID_CONFLICT
 Replay does not create duplicate positions, journals, entries, audit events, or
 balance movement.
 
+Unlock uses the same transaction advisory lock namespace:
+
+```text
+staking-wallet-web:staking-position-command:v1
+```
+
+The unlock ledger journal uses the same command ID as the audit row. Same
+command replay returns the existing unlock state. Reusing the command ID with a
+different actor, expected version, position, wallet version for user commands,
+or reason returns `STAKING_POSITION_COMMAND_ID_CONFLICT`.
+
+If a new command targets an already `UNLOCKED` position with the current
+position version, the database records an immutable `NOOP` audit event and does
+not post a journal, change balances, or increment the position version.
+
 ## Invariants
 
 `private.validate_staking_position_core()` blocks unsupported updates and
-invalid inserts. `private.prevent_staking_position_deletion()` blocks delete
+invalid inserts. The only supported update is `LOCKED -> UNLOCKED` with the
+unlock fields, `updated_at`, and `version` changed. `private.prevent_staking_position_deletion()` blocks delete
 and truncate.
 
 `private.validate_staking_position_invariants()` is a deferred constraint
@@ -162,6 +221,10 @@ Users read their own positions through
 as text and omits ledger account IDs, journal IDs, request data, reward
 calculation, wallet address, transaction ID, cookies, and tokens.
 
+Users read their own maturity state through the same read RPC. The result uses
+database time and returns `LOCKED`, `MATURED`, or `UNLOCKED`. User output
+intentionally omits `unlocked_by`, journal IDs, request data, and audit rows.
+
 Administrators read position and audit summaries through AAL2-only RPCs. The
-admin UI is read-only and does not provide unlock, cancel, reward, address, or
-on-chain controls.
+admin UI can submit matured principal unlock commands, but does not provide
+early unlock, partial unlock, cancel, reward, address, or on-chain controls.

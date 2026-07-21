@@ -84,8 +84,8 @@ function StakingView({
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
               Active product terms and principal-lock positions for the
-              managed wallet. This phase moves principal from Available to
-              Locked only.
+              managed wallet. This phase supports principal lock and matured
+              principal unlock only.
             </p>
           </div>
           <nav className="flex flex-wrap gap-3">
@@ -110,7 +110,10 @@ function StakingView({
         <BoundaryNotice />
         <WalletSummary staking={staking} />
         <ProductSection staking={staking} />
-        <PositionSection positions={staking.positions} />
+        <PositionSection
+          positions={staking.positions}
+          wallet={staking.wallet}
+        />
       </div>
     </main>
   );
@@ -123,13 +126,13 @@ function BoundaryNotice() {
         Principal lock boundary
       </h2>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        This phase validates Principal Lock only. Maturity, unlock, reward
-        calculation, reward payment, claims, wallet addresses, transactions,
-        and on-chain staking are not provided yet.
+        This phase validates Principal Lock and matured Principal Unlock only.
+        Reward calculation, reward payment, claims, wallet addresses,
+        transactions, and on-chain staking are not provided.
       </p>
       <p className="mt-2 text-sm leading-6 text-amber-900">
-        PPM is a fixed term condition, not APY or APR. No estimated reward or
-        yield guarantee is displayed.
+        PPM is a fixed term condition, not APY or APR. Unlock moves principal
+        only; no estimated reward or yield guarantee is displayed.
       </p>
     </section>
   );
@@ -331,8 +334,10 @@ function ProductCard({
 
 function PositionSection({
   positions,
+  wallet,
 }: {
   positions: CurrentStakingPosition[];
+  wallet: ReadyStaking["wallet"];
 }) {
   return (
     <section className="border border-zinc-200 p-5">
@@ -340,7 +345,11 @@ function PositionSection({
       {positions.length > 0 ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {positions.map((position) => (
-            <PositionCard key={position.stakingPositionId} position={position} />
+            <PositionCard
+              key={position.stakingPositionId}
+              position={position}
+              wallet={wallet}
+            />
           ))}
         </div>
       ) : (
@@ -352,7 +361,18 @@ function PositionSection({
   );
 }
 
-function PositionCard({ position }: { position: CurrentStakingPosition }) {
+function PositionCard({
+  position,
+  wallet,
+}: {
+  position: CurrentStakingPosition;
+  wallet: ReadyStaking["wallet"];
+}) {
+  const canUnlock =
+    position.status === "LOCKED" &&
+    position.maturityState === "MATURED" &&
+    wallet.status === "ACTIVE";
+
   return (
     <article className="border border-zinc-200 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -365,7 +385,7 @@ function PositionCard({ position }: { position: CurrentStakingPosition }) {
           </h3>
         </div>
         <span className="border border-zinc-200 px-3 py-1 text-xs text-zinc-600">
-          {position.status}
+          {position.maturityState}
         </span>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -385,6 +405,17 @@ function PositionCard({ position }: { position: CurrentStakingPosition }) {
           label="Matures"
           value={formatTimestamp(position.maturesAt)}
         />
+        <Detail label="Status" value={position.status} />
+        <Detail label="Maturity state" value={position.maturityState} />
+        {position.unlockedAt ? (
+          <Detail
+            label="Unlocked"
+            value={formatTimestamp(position.unlockedAt)}
+          />
+        ) : null}
+        {position.unlockActorType ? (
+          <Detail label="Unlock actor" value={position.unlockActorType} />
+        ) : null}
         <Detail
           label="Duration snapshot"
           value={`${position.lockDurationDaysSnapshot} days`}
@@ -396,9 +427,51 @@ function PositionCard({ position }: { position: CurrentStakingPosition }) {
       </div>
       <p className="mt-4 text-sm leading-6 text-zinc-600">
         Product status changes after creation do not alter this snapshot.
-        Unlock, reward posting, reward claim, and maturity commands are not
-        implemented.
+        Unlock moves matured principal only. Reward posting, reward claim, and
+        early exit commands are not implemented.
       </p>
+      {position.status === "LOCKED" && position.maturityState === "MATURED" ? (
+        <form
+          action="/api/v1/staking/positions/unlock"
+          className="mt-5 border-t border-zinc-100 pt-5"
+          method="post"
+        >
+          <input
+            name="staking_position_id"
+            type="hidden"
+            value={position.stakingPositionId}
+          />
+          <input
+            name="position_expected_version"
+            type="hidden"
+            value={position.positionVersion}
+          />
+          <input
+            name="wallet_expected_version"
+            type="hidden"
+            value={wallet.version}
+          />
+          <input name="command_id" type="hidden" value={randomUUID()} />
+          <button
+            className="h-10 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:border-zinc-300 disabled:bg-zinc-100 disabled:text-zinc-500"
+            disabled={!canUnlock}
+            type="submit"
+          >
+            Unlock matured principal
+          </button>
+          <p className="mt-3 text-sm leading-6 text-zinc-600">
+            {canUnlock
+              ? "Moves this matured principal from Locked to Available."
+              : "This wallet is not ACTIVE. An administrator may need to review the matured principal; the principal is not lost."}
+          </p>
+        </form>
+      ) : null}
+      {position.status === "LOCKED" && position.maturityState === "LOCKED" ? (
+        <p className="mt-4 border border-zinc-100 p-4 text-sm leading-6 text-zinc-600">
+          This position is not matured yet. Early unlock and partial unlock are
+          not available.
+        </p>
+      ) : null}
     </article>
   );
 }

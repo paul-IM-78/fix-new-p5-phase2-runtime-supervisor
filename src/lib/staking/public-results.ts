@@ -18,6 +18,12 @@ export type StakingPublicResultCode =
   | "staking_enrollment_expired"
   | "staking_position_created"
   | "staking_position_replayed"
+  | "staking_position_unlocked"
+  | "staking_position_unlock_noop"
+  | "staking_position_not_found"
+  | "staking_position_version_conflict"
+  | "staking_position_not_matured"
+  | "staking_position_already_unlocked"
   | "staking_product_not_active"
   | "staking_enrollment_not_open"
   | "staking_position_below_minimum"
@@ -28,7 +34,12 @@ export type StakingPublicResultCode =
   | "staking_wallet_not_active"
   | "staking_profile_not_active"
   | "staking_position_insufficient_available"
+  | "staking_insufficient_locked_balance"
   | "staking_position_ledger_unavailable"
+  | "staking_position_command_conflict"
+  | "staking_position_forbidden"
+  | "staking_position_unavailable"
+  | "staking_position_audit_unavailable"
   | "staking_command_replayed"
   | "staking_command_conflict"
   | "staking_command_forbidden"
@@ -64,6 +75,18 @@ const STAKING_PUBLIC_MESSAGES: Record<StakingPublicResultCode, string> = {
     "Staking position created and principal moved to locked units.",
   staking_position_replayed:
     "Staking position command replayed without duplicate changes.",
+  staking_position_unlocked:
+    "만기된 스테이킹 원금이 사용 가능 잔액으로 해제되었습니다.",
+  staking_position_unlock_noop:
+    "이미 해제된 스테이킹 포지션입니다. 잔액 변경은 없습니다.",
+  staking_position_not_found:
+    "스테이킹 포지션을 찾을 수 없습니다.",
+  staking_position_version_conflict:
+    "스테이킹 포지션 버전이 최신이 아닙니다.",
+  staking_position_not_matured:
+    "스테이킹 포지션이 아직 만기되지 않았습니다.",
+  staking_position_already_unlocked:
+    "스테이킹 포지션이 이미 해제되었습니다.",
   staking_product_not_active:
     "Staking product is not active.",
   staking_enrollment_not_open:
@@ -83,8 +106,18 @@ const STAKING_PUBLIC_MESSAGES: Record<StakingPublicResultCode, string> = {
     "Profile must be active to create a staking position.",
   staking_position_insufficient_available:
     "Available units are insufficient for this principal lock.",
+  staking_insufficient_locked_balance:
+    "해제할 잠금 잔액이 부족합니다.",
   staking_position_ledger_unavailable:
     "Staking position ledger accounts are unavailable.",
+  staking_position_command_conflict:
+    "스테이킹 포지션 명령 ID가 다른 요청에 이미 사용되었습니다.",
+  staking_position_forbidden:
+    "현재 사용자의 스테이킹 포지션이 아닙니다.",
+  staking_position_unavailable:
+    "스테이킹 포지션 명령을 처리할 수 없습니다.",
+  staking_position_audit_unavailable:
+    "스테이킹 포지션 감사 정보를 사용할 수 없습니다.",
   staking_command_replayed: "Command replayed without duplicate changes.",
   staking_command_conflict: "Command ID has already been used differently.",
   staking_command_forbidden: "Administrator authorization is required.",

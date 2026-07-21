@@ -2,12 +2,12 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 4 staking position and principal lock. Phase 3
+Current phase: Phase 4 staking position maturity and principal unlock. Phase 3
 double-entry ledger flows remain intact, and Phase 4 now adds staking product
 catalog metadata, AAL2 administrator product lifecycle commands, user
-principal-lock position creation, and read-only administrator position review.
-Maturity processing, principal unlock, rewards, unstaking, and chain
-integration remain out of scope.
+principal-lock position creation, matured user principal unlock, and AAL2
+administrator matured principal unlock. Rewards, unstaking, early exit, and
+chain integration remain out of scope.
 
 ## Stack
 
@@ -50,6 +50,7 @@ npm run test:ledger:balance-overview:local
 npm run test:phase3:closeout:local
 npm run test:staking:products:local
 npm run test:staking:positions:local
+npm run test:staking:position-unlock:local
 ```
 
 ## Supabase Local
@@ -243,19 +244,32 @@ Each position snapshots product version, lock duration, reward rate PPM,
 rounding mode, locked timestamp, and maturity timestamp. Multiple positions for
 the same user and product are allowed when each command is distinct.
 
-`/admin/staking-positions` is AAL2 ADMIN-only and read-only. It shows position
-and audit summaries without unlock, cancellation, reward, wallet address,
-transaction, or on-chain controls.
+`/staking` also shows PostgreSQL-derived maturity state. When a position is
+`LOCKED`, `MATURED`, and the user's managed wallet is `ACTIVE`, a same-origin
+POST can unlock the full matured principal and move units back to available:
+
+```text
+DEBIT  USER_LOCKED
+CREDIT USER_AVAILABLE
+```
+
+`/admin/staking-positions` is AAL2 ADMIN-only. It shows position and audit
+summaries and can unlock matured `LOCKED` positions for operational cleanup,
+including inactive target profiles or non-active target wallets when existing
+ledger accounts remain valid. It does not provide early unlock, partial
+unlock, cancellation, reward, wallet address, transaction, or on-chain
+controls.
 
 Run the local staking position integration script after starting local
 Supabase, resetting the DB, and building the production app:
 
 ```bash
 npm run test:staking:positions:local
+npm run test:staking:position-unlock:local
 ```
 
-Principal unlock, maturity commands, reward calculation, reward posting, APY or
-APR display, expected reward display, on-chain staking, service-role
+Reward calculation, reward posting, APY or APR display, expected reward
+display, early exit, partial unlock, on-chain staking, service-role
 application access, remote Supabase, and production connectivity are still not
 implemented.
 
@@ -726,7 +740,7 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - MFA factor removal, recovery codes, and break-glass recovery
 - Real deposit settlement and automatic confirmation
 - External withdrawal fulfillment and blockchain verification
-- Staking lock and reward commands
+- Staking reward commands
 - Generic manual financial commands
 - Production deployment
 - Mainnet integration
