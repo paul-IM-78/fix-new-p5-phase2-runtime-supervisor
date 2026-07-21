@@ -43,6 +43,16 @@ gate remains PASS.
 - Admin FAILED withdrawal cancellation with clearing reversal to user available.
 - Immutable withdrawal command audit.
 - Immutable withdrawal execution attempts.
+- User Balance Overview page.
+- Atomic Unit text rendering.
+- Balance bucket sum validation.
+- Cross-asset aggregation absent.
+- Deposit and withdrawal status integration.
+- Cross-user balance read isolation.
+- Inactive profile balance read blocking.
+- FROZEN and CLOSED wallet read boundary.
+- Phase 3 full regression script.
+- Phase 3 closeout checklist.
 - Generic manual journal absent.
 - Text amount return values.
 - Service-role application client absent.
@@ -57,7 +67,7 @@ The following tasks must wait for this gate:
 - Withdrawal request.
 - Staking lock.
 - Reward posting.
-- User balance UI.
+- External custody and provider integration.
 
 ## Continuing Prohibitions
 
@@ -105,3 +115,12 @@ local-only: start and fail post no journal, settle posts only the exact
 reduced to a SHA-256 digest in the private schema, and no external payout,
 provider, scanner, webhook, mainnet, remote Supabase, service-role application
 client, or production path is added.
+
+NEW-P3-T06 intentionally adds the `/balances` user read view and Phase 3
+closeout regression script without changing migrations, database tests, or
+generated database types. The view is an internal ledger liability overview
+only. It shows per-asset Atomic Unit strings and local request statuses, but no
+cross-asset totals, fiat valuation, APY, rewards, destination addresses,
+transaction identifiers, explorer links, raw evidence, evidence digests,
+custody proof, service-role application client, remote Supabase, mainnet, or
+production path.

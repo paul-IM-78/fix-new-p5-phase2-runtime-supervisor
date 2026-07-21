@@ -78,6 +78,7 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             <DashboardLink href="/account">Account</DashboardLink>
             <DashboardLink href="/catalog">Catalog</DashboardLink>
             <DashboardLink href="/wallet">Wallet</DashboardLink>
+            <DashboardLink href="/balances">Balances</DashboardLink>
             <DashboardLink href="/deposits">Deposits</DashboardLink>
             <DashboardLink href="/withdrawals">Withdrawals</DashboardLink>
           </nav>
@@ -93,6 +94,21 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
             label="Account model"
             value="Managed wallet account"
           />
+        </section>
+
+        <section className="border border-zinc-200 p-5">
+          <h2 className="text-base font-semibold">Financial state overview</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Use Balances to review asset-level internal ledger buckets together
+            with recent deposit and withdrawal states. The dashboard keeps this
+            summary as a link rather than duplicating balance reads.
+          </p>
+          <Link
+            className="mt-4 inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/balances"
+          >
+            Balances
+          </Link>
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">

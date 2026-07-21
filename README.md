@@ -6,7 +6,8 @@ Current phase: Phase 3 double-entry ledger with AAL2 administrator Opening
 Balance commands, exact Opening reversal, local manual deposit request state
 machine commands, local manual withdrawal request state machine commands,
 immutable financial audit, calculated balance views, and read-only user/admin
-balance summaries.
+balance summaries. Phase 3 now includes the user-facing `/balances` read view
+and a full local Phase 3 closeout regression script.
 
 ## Stack
 
@@ -45,6 +46,8 @@ npm run test:phase2:closeout:local
 npm run test:ledger:deposits:local
 npm run test:ledger:withdrawals:local
 npm run test:ledger:withdrawal-execution:local
+npm run test:ledger:balance-overview:local
+npm run test:phase3:closeout:local
 ```
 
 ## Supabase Local
@@ -542,6 +545,52 @@ addresses, chain indexing, provider response storage, staking, reward,
 service-role application access, remote Supabase, mainnet, and production
 connectivity remain unimplemented.
 
+## User Balance Overview
+
+ACTIVE users can read their internal managed-wallet ledger state:
+
+```text
+GET /balances
+```
+
+`/balances` reads existing current-user RPCs only:
+
+- `public.list_current_user_ledger_balances()`
+- `public.list_current_user_deposit_requests(p_limit)`
+- `public.list_current_user_withdrawal_requests(p_limit)`
+
+The page displays asset-level Available, Locked, Pending Deposit, Pending
+Withdrawal, and Total Liability Atomic Unit strings. Total Liability is the
+internal double-entry ledger liability sum for one asset. It is not an external
+asset holding statement or custody proof.
+
+All financial units remain decimal strings. JavaScript `Number`, floating
+point arithmetic, cross-asset totals, fiat valuation, APY, and reward
+projections are not used. Destination addresses, transaction identifiers,
+explorer links, raw evidence, evidence digests, administrator audit rows,
+private keys, mnemonics, and client signing paths are not shown.
+
+Anonymous users are redirected to sign in with `next=/balances`. Inactive
+profiles are blocked by the central account guard. ACTIVE, FROZEN, and CLOSED
+managed wallets remain readable while the profile is ACTIVE.
+
+Run the local balance overview integration script after starting local
+Supabase, resetting the DB, and building. If `APP_ORIGIN` is not provided, the
+script starts a temporary production Next.js server on `http://localhost:3010`
+and stops it after the smoke. To test an already running production server,
+set `APP_ORIGIN` explicitly, such as `http://localhost:3000`.
+
+```bash
+npm run test:ledger:balance-overview:local
+```
+
+Run the full local Phase 3 closeout regression after starting local Supabase
+and a production Next.js server on `http://localhost:3000`:
+
+```bash
+npm run test:phase3:closeout:local
+```
+
 ## Health Route
 
 ```text
@@ -603,7 +652,6 @@ The legacy repository preserves the previous Solana Wallet Adapter dApp and Expo
 - Real deposit settlement and automatic confirmation
 - External withdrawal fulfillment and blockchain verification
 - Staking lock and reward commands
-- Balance UI
 - Generic manual financial commands
 - Production deployment
 - Mainnet integration

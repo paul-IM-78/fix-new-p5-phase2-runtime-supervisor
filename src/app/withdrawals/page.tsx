@@ -81,6 +81,7 @@ function WithdrawalsView({
             <Link href="/account">Account</Link>
             <Link href="/wallet">Wallet</Link>
             <Link href="/catalog">Catalog</Link>
+            <Link href="/balances">Balances</Link>
             <Link href="/deposits">Deposits</Link>
           </nav>
           <div>

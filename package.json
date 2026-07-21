@@ -25,7 +25,9 @@
     "test:ledger:opening-corrections:local": "node scripts/ledger/opening-balance-corrections.local.mjs",
     "test:ledger:deposits:local": "node scripts/ledger/deposit-state-machine.local.mjs",
     "test:ledger:withdrawals:local": "node scripts/ledger/withdrawal-state-machine.local.mjs",
-    "test:ledger:withdrawal-execution:local": "node scripts/ledger/withdrawal-execution-settlement.local.mjs"
+    "test:ledger:withdrawal-execution:local": "node scripts/ledger/withdrawal-execution-settlement.local.mjs",
+    "test:ledger:balance-overview:local": "node scripts/ledger/balance-overview.local.mjs",
+    "test:phase3:closeout:local": "node scripts/phase/phase3-closeout.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

@@ -39,6 +39,7 @@ export default async function WalletPage() {
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/account">Account</Link>
             <Link href="/catalog">Catalog</Link>
+            <Link href="/balances">Balances</Link>
           </nav>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
@@ -75,6 +76,15 @@ export default async function WalletPage() {
           />
         </section>
 
+        <section className="border border-zinc-200 p-5">
+          <h2 className="text-base font-semibold">Balance boundary</h2>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Wallet operational status and internal ledger balances are separate
+            views. Use Balances for asset-level Available, Locked, Pending, and
+            Total Liability buckets.
+          </p>
+        </section>
+
         <div className="flex flex-wrap gap-3">
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
@@ -87,6 +97,12 @@ export default async function WalletPage() {
             href="/catalog"
           >
             Catalog
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/balances"
+          >
+            Balances
           </Link>
           <form action="/api/v1/auth/sign-out" method="post">
             <button

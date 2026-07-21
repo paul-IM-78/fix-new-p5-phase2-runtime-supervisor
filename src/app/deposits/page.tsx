@@ -81,6 +81,7 @@ function DepositsView({
             <Link href="/account">Account</Link>
             <Link href="/wallet">Wallet</Link>
             <Link href="/catalog">Catalog</Link>
+            <Link href="/balances">Balances</Link>
           </nav>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
