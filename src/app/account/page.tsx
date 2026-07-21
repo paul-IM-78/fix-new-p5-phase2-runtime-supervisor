@@ -75,6 +75,12 @@ export default async function AccountPage() {
             role administration. Catalog and managed wallet account reads
             expose metadata and operational state only.
           </p>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Account status can affect user staking command eligibility.
+            Principal lock, matured unlock, and reward settlement remain user
+            flows under `/staking`; administrator product and position
+            operations stay under AAL2 admin pages.
+          </p>
         </section>
 
         <div className="flex flex-wrap gap-3">

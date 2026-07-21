@@ -82,6 +82,7 @@ function DepositsView({
             <Link href="/wallet">Wallet</Link>
             <Link href="/catalog">Catalog</Link>
             <Link href="/balances">Balances</Link>
+            <Link href="/staking">Staking</Link>
           </nav>
           <div>
             <h1 className="text-3xl font-semibold tracking-normal">
@@ -138,6 +139,25 @@ function BoundaryNotice() {
         An AAL2 administrator can later confirm or cancel the request. Do
         not send real assets for this workflow.
       </p>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Confirmed deposits can increase Available units for the asset, which
+        may later be used in a separate staking position command. Deposit
+        confirmation never creates a staking position automatically.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <Link
+          className="inline-flex h-10 items-center border border-amber-300 px-4 text-sm font-medium text-amber-950"
+          href="/balances"
+        >
+          Balances
+        </Link>
+        <Link
+          className="inline-flex h-10 items-center border border-amber-300 px-4 text-sm font-medium text-amber-950"
+          href="/staking"
+        >
+          Staking
+        </Link>
+      </div>
     </section>
   );
 }

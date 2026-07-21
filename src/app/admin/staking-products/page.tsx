@@ -87,7 +87,15 @@ export default async function AdminStakingProductsPage({
               entries, lock principal, calculate rewards, or contact a chain.
             </p>
           </div>
+          <nav className="flex flex-wrap gap-3">
+            <AdminLink href="/admin/staking-positions">
+              Position operations
+            </AdminLink>
+            <AdminLink href="/admin">Admin home</AdminLink>
+          </nav>
         </header>
+
+        <OperationsNotice />
 
         {resultMessage ? (
           <p className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -103,6 +111,10 @@ export default async function AdminStakingProductsPage({
 
         {domainCatalog.ok && stakingCatalog.ok ? (
           <>
+            <ProductOperationsSummary
+              assignments={domainCatalog.assignments}
+              products={stakingCatalog.products}
+            />
             <section className="grid gap-5 xl:grid-cols-3">
               <CreateProductForm
                 assets={domainCatalog.assets}
@@ -127,6 +139,62 @@ export default async function AdminStakingProductsPage({
         )}
       </div>
     </main>
+  );
+}
+
+function OperationsNotice() {
+  return (
+    <section className="border border-amber-200 bg-amber-50 p-5">
+      <h2 className="text-base font-semibold text-amber-950">
+        Product and position lifecycle are separate
+      </h2>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Product SUSPENDED or ARCHIVED controls new position enrollment only.
+        It does not rewrite existing position snapshots or remove matured
+        principal and reward obligations. Use Position operations for AAL2
+        cleanup of existing positions.
+      </p>
+    </section>
+  );
+}
+
+function ProductOperationsSummary({
+  assignments,
+  products,
+}: {
+  assignments: AdminProjectTokenAssignment[];
+  products: AdminStakingProduct[];
+}) {
+  const currentTokenCount = products.filter((product) =>
+    isCurrentAssignment(product, assignments),
+  ).length;
+
+  return (
+    <section className="grid gap-4 sm:grid-cols-4">
+      <Detail label="Draft" value={String(countProducts(products, "DRAFT"))} />
+      <Detail
+        label="Active"
+        value={String(countProducts(products, "ACTIVE"))}
+      />
+      <Detail
+        label="Suspended"
+        value={String(countProducts(products, "SUSPENDED"))}
+      />
+      <Detail
+        label="Archived"
+        value={String(countProducts(products, "ARCHIVED"))}
+      />
+      <Detail
+        label="Open enrollment"
+        value={String(countEnrollment(products, "OPEN"))}
+      />
+      <Detail
+        label="Upcoming enrollment"
+        value={String(countEnrollment(products, "UPCOMING"))}
+      />
+      <Detail label="Current token" value={String(currentTokenCount)} />
+      <Detail label="Total products" value={String(products.length)} />
+    </section>
   );
 }
 
@@ -669,6 +737,50 @@ function isCurrentAssignment(
       assignment.projectId === product.projectId &&
       assignment.assetId === product.assetId &&
       assignment.retiredAt === null,
+  );
+}
+
+function countProducts(
+  products: AdminStakingProduct[],
+  status: string,
+): number {
+  return products.filter((product) => product.status === status).length;
+}
+
+function countEnrollment(
+  products: AdminStakingProduct[],
+  enrollmentState: string,
+): number {
+  return products.filter(
+    (product) => product.enrollmentState === enrollmentState,
+  ).length;
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-zinc-200 p-4">
+      <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        {label}
+      </h2>
+      <p className="mt-2 break-words text-base font-medium">{value}</p>
+    </div>
+  );
+}
+
+function AdminLink({
+  children,
+  href,
+}: {
+  children: string;
+  href: string;
+}) {
+  return (
+    <Link
+      className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+      href={href}
+    >
+      {children}
+    </Link>
   );
 }
 

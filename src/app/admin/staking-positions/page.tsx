@@ -79,6 +79,12 @@ export default async function AdminStakingPositionsPage({
               plus principal unlock and one-time reward settlement commands.
             </p>
           </div>
+          <nav className="flex flex-wrap gap-3">
+            <AdminLink href="/admin/staking-products">
+              Product operations
+            </AdminLink>
+            <AdminLink href="/admin">Admin home</AdminLink>
+          </nav>
         </header>
 
         <BoundaryNotice />
@@ -97,7 +103,27 @@ export default async function AdminStakingPositionsPage({
 
         {catalog.ok ? (
           <>
-            <PositionTable positions={catalog.positions} />
+            <OperationsSummary positions={catalog.positions} />
+            <PositionTable
+              description="Matured LOCKED positions that can be unlocked by an AAL2 administrator."
+              positions={buildAdminQueues(catalog.positions).principalQueue}
+              title="Principal Unlock Queue"
+            />
+            <PositionTable
+              description="UNLOCKED positions with claimable snapshot rewards."
+              positions={buildAdminQueues(catalog.positions).rewardQueue}
+              title="Reward Settlement Queue"
+            />
+            <PositionTable
+              description="LOCKED positions that are not yet mature according to the DB-derived maturity state."
+              positions={buildAdminQueues(catalog.positions).activeLocks}
+              title="Active Locks"
+            />
+            <PositionTable
+              description="Positions with final PAID or ZERO reward settlement state."
+              positions={buildAdminQueues(catalog.positions).completed}
+              title="Completed"
+            />
             <AuditTable events={catalog.auditEvents} />
             <RewardAuditTable events={catalog.rewardAuditEvents} />
           </>
@@ -125,18 +151,115 @@ function BoundaryNotice() {
         external account identifiers, cancel positions, or connect to
         on-chain staking.
       </p>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Product status changes do not erase existing position obligations.
+        Inactive profiles and FROZEN or CLOSED wallets may still require AAL2
+        cleanup for matured principal or already unlocked rewards.
+      </p>
     </section>
   );
 }
 
-function PositionTable({
+function OperationsSummary({
   positions,
 }: {
   positions: AdminStakingPosition[];
 }) {
+  const queues = buildAdminQueues(positions);
+  const inactiveTargets = positions.filter(
+    (position) => position.profileStatus !== "ACTIVE",
+  ).length;
+  const inactiveWalletTargets = positions.filter(
+    (position) =>
+      position.walletStatus === "FROZEN" || position.walletStatus === "CLOSED",
+  ).length;
+
+  return (
+    <section className="grid gap-4 sm:grid-cols-4">
+      <Detail label="Locked" value={String(countByStatus(positions, "LOCKED"))} />
+      <Detail
+        label="Matured principal"
+        value={String(queues.principalQueue.length)}
+      />
+      <Detail
+        label="Claimable rewards"
+        value={String(queues.rewardQueue.length)}
+      />
+      <Detail
+        label="Paid rewards"
+        value={String(countByRewardState(positions, "PAID"))}
+      />
+      <Detail
+        label="Zero rewards"
+        value={String(countByRewardState(positions, "ZERO"))}
+      />
+      <Detail label="Completed" value={String(queues.completed.length)} />
+      <Detail
+        label="Inactive profiles"
+        value={String(inactiveTargets)}
+      />
+      <Detail
+        label="Frozen or closed wallets"
+        value={String(inactiveWalletTargets)}
+      />
+    </section>
+  );
+}
+
+type AdminPositionQueues = {
+  principalQueue: AdminStakingPosition[];
+  rewardQueue: AdminStakingPosition[];
+  activeLocks: AdminStakingPosition[];
+  completed: AdminStakingPosition[];
+};
+
+function buildAdminQueues(
+  positions: AdminStakingPosition[],
+): AdminPositionQueues {
+  return {
+    principalQueue: positions
+      .filter(
+        (position) =>
+          position.status === "LOCKED" &&
+          position.maturityState === "MATURED",
+      )
+      .toSorted(comparePrincipalQueue),
+    rewardQueue: positions
+      .filter(
+        (position) =>
+          position.status === "UNLOCKED" &&
+          position.rewardState === "CLAIMABLE",
+      )
+      .toSorted(compareRewardQueue),
+    activeLocks: positions
+      .filter(
+        (position) =>
+          position.status === "LOCKED" &&
+          position.maturityState === "LOCKED",
+      )
+      .toSorted(compareActiveLocks),
+    completed: positions
+      .filter(
+        (position) =>
+          position.rewardState === "PAID" || position.rewardState === "ZERO",
+      )
+      .toSorted(compareCompleted),
+  };
+}
+
+function PositionTable({
+  description,
+  positions,
+  title,
+}: {
+  description: string;
+  positions: AdminStakingPosition[];
+  title: string;
+}) {
   return (
     <section className="border border-zinc-200 p-5">
-      <h2 className="text-lg font-semibold">Positions</h2>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      <p className="mt-1 text-sm leading-6 text-zinc-600">{description}</p>
       {positions.length > 0 ? (
         <div className="mt-5 overflow-x-auto">
           <table className="min-w-full border-collapse text-left text-sm">
@@ -462,6 +585,101 @@ function shortIdentifier(value: string): string {
   return value.length > 14
     ? `${value.slice(0, 6)}...${value.slice(-6)}`
     : value;
+}
+
+function countByStatus(
+  positions: AdminStakingPosition[],
+  status: AdminStakingPosition["status"],
+): number {
+  return positions.filter((position) => position.status === status).length;
+}
+
+function countByRewardState(
+  positions: AdminStakingPosition[],
+  rewardState: AdminStakingPosition["rewardState"],
+): number {
+  return positions.filter((position) => position.rewardState === rewardState)
+    .length;
+}
+
+function comparePrincipalQueue(
+  left: AdminStakingPosition,
+  right: AdminStakingPosition,
+): number {
+  return (
+    compareIsoAsc(left.maturesAt, right.maturesAt) ||
+    left.stakingPositionId.localeCompare(right.stakingPositionId)
+  );
+}
+
+function compareRewardQueue(
+  left: AdminStakingPosition,
+  right: AdminStakingPosition,
+): number {
+  return (
+    compareIsoAsc(left.unlockedAt ?? left.lockedAt, right.unlockedAt ?? right.lockedAt) ||
+    left.stakingPositionId.localeCompare(right.stakingPositionId)
+  );
+}
+
+function compareActiveLocks(
+  left: AdminStakingPosition,
+  right: AdminStakingPosition,
+): number {
+  return (
+    compareIsoAsc(left.maturesAt, right.maturesAt) ||
+    left.stakingPositionId.localeCompare(right.stakingPositionId)
+  );
+}
+
+function compareCompleted(
+  left: AdminStakingPosition,
+  right: AdminStakingPosition,
+): number {
+  return (
+    compareIsoDesc(completedSortTime(left), completedSortTime(right)) ||
+    left.stakingPositionId.localeCompare(right.stakingPositionId)
+  );
+}
+
+function completedSortTime(position: AdminStakingPosition): string {
+  return position.rewardSettledAt ?? position.unlockedAt ?? position.lockedAt;
+}
+
+function compareIsoAsc(left: string, right: string): number {
+  return Date.parse(left) - Date.parse(right);
+}
+
+function compareIsoDesc(left: string, right: string): number {
+  return Date.parse(right) - Date.parse(left);
+}
+
+function Detail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-zinc-200 p-4">
+      <h2 className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        {label}
+      </h2>
+      <p className="mt-2 break-words text-base font-medium">{value}</p>
+    </div>
+  );
+}
+
+function AdminLink({
+  children,
+  href,
+}: {
+  children: string;
+  href: string;
+}) {
+  return (
+    <Link
+      className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+      href={href}
+    >
+      {children}
+    </Link>
+  );
 }
 
 function getSingleValue(value: string | string[] | undefined): string | null {

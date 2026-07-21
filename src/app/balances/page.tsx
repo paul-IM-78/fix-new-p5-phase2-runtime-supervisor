@@ -128,6 +128,12 @@ function BoundaryNotice() {
         Locked Atomic Units are the future staking principal bucket. A locked
         value by itself does not mean a staking position exists in this phase.
       </p>
+      <p className="mt-2 text-sm leading-6 text-amber-900">
+        Available Atomic Units may be used for new staking positions when a
+        product is OPEN and the wallet is ACTIVE. Post-unlock settlement
+        payouts credit Available units. This page still avoids asset-level aggregation,
+        portfolio value, and projected yield.
+      </p>
     </section>
   );
 }

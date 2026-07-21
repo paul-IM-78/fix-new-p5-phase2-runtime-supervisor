@@ -113,17 +113,19 @@ function DashboardView({ dashboard }: { dashboard: ReadyDashboard }) {
         </section>
 
         <section className="border border-zinc-200 p-5">
-          <h2 className="text-base font-semibold">Staking products</h2>
+          <h2 className="text-base font-semibold">Staking lifecycle</h2>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
-            Review active and upcoming product terms. Staking requests,
-            reward calculation, and principal locking are not implemented on
-            the dashboard.
+            Use Staking to follow the managed lifecycle from product lookup
+            to principal lock, database-derived maturity, principal unlock,
+            and one-time snapshot reward settlement. The dashboard links to
+            that flow without duplicating balance reads or reward
+            calculations.
           </p>
           <Link
             className="mt-4 inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
             href="/staking"
           >
-            Staking products
+            Staking
           </Link>
         </section>
 

@@ -2,12 +2,14 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 4 staking reward settlement. Phase 3 double-entry ledger
-flows remain intact, and Phase 4 now adds staking product catalog metadata,
-AAL2 administrator product lifecycle commands, user principal-lock position
-creation, matured principal unlock, and one-time immutable snapshot reward
-settlement. Unstaking, early exit, repeated reward claim, reward reversal,
-recurring accrual, and chain integration remain out of scope.
+Current phase: Phase 4 complete. Phase 3 double-entry ledger flows remain
+intact, and Phase 4 now covers staking product catalog metadata, AAL2
+administrator product lifecycle commands, user principal-lock position
+creation, database-derived maturity, matured principal unlock, one-time
+immutable snapshot reward settlement, user lifecycle screens, administrator
+operation queues, and local closeout regression. Unstaking, early exit,
+repeated reward claim, reward reversal, recurring accrual, APY/APR display,
+and chain integration remain out of scope.
 
 ## Stack
 
@@ -52,6 +54,8 @@ npm run test:staking:products:local
 npm run test:staking:positions:local
 npm run test:staking:position-unlock:local
 npm run test:staking:rewards:local
+npm run test:staking:lifecycle:local
+npm run test:phase4:closeout:local
 ```
 
 ## Supabase Local
@@ -683,12 +687,29 @@ caller-supplied command IDs for idempotent replay, freeze product terms after
 first activation, and validate that activation uses the current ACTIVE SOLANA
 SPL project token.
 
-`/staking` is a read-only product catalog. It shows fixed term PPM metadata
-but does not display APY/APR, expected rewards, staking forms, wallet
-addresses, transaction IDs, claims, unlocks, or position state. Product
-commands do not create ledger accounts, post ledger journals, move balances,
-lock principal, create staking positions, calculate rewards, call Solana, or
-sign transactions.
+`/staking` is the user lifecycle surface. It groups positions into Action
+Required, Active Locks, and Completed history, while also showing OPEN and
+UPCOMING products and asset-level balances. Position creation is the only user
+form that accepts a financial value, and that value is principal atomic units.
+Principal lock posts Available to Locked, matured unlock posts Locked to
+Available, and positive reward settlement posts System Reward Expense to
+Available through existing database commands.
+
+Reward calculation uses immutable position snapshots and exact PostgreSQL
+`numeric` floor rounding. The browser does not accept reward units, reward
+rates, ledger accounts, sides, maturity state, position status, or journal IDs.
+The UI displays exact atomic-unit strings per asset and never creates
+cross-asset totals, fiat totals, APY, APR, projected yield, wallet addresses,
+transaction IDs, private keys, mnemonics, or client signing flows.
+
+Admin staking operations are split:
+
+- `/admin/staking-products` manages product terms, status, and audit.
+- `/admin/staking-positions` manages existing matured principal and reward
+  obligations with AAL2 command forms and audit summaries.
+
+Product status changes affect new enrollment only. Existing position
+principal and reward obligations remain separate operational work.
 
 Run the local staking product regression after starting local Supabase,
 resetting the DB, and building. If `APP_ORIGIN` is not provided, the script
@@ -697,6 +718,11 @@ stops it after the smoke.
 
 ```bash
 npm run test:staking:products:local
+npm run test:staking:positions:local
+npm run test:staking:position-unlock:local
+npm run test:staking:rewards:local
+npm run test:staking:lifecycle:local
+npm run test:phase4:closeout:local
 ```
 
 ## Health Route

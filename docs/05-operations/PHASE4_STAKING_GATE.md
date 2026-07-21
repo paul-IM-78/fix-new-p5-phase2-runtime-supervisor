@@ -1,7 +1,11 @@
 # Phase 4 Staking Gate
 
-NEW-P4-T04 extends Phase 4 from matured principal unlock to one-time immutable
-snapshot reward settlement.
+Status: COMPLETE.
+
+NEW-P4-T05 closes Phase 4 after integrating the user staking lifecycle,
+administrator operations queues, lifecycle E2E, and full local closeout
+regression. The database, RPC, generated type, and ledger posting boundaries
+remain frozen from NEW-P4-T04.
 
 ## Gate Conditions Met
 
@@ -74,6 +78,19 @@ snapshot reward settlement.
 - Admin `/admin/staking-products` provides local product command forms.
 - Admin `/admin/staking-positions` exposes matured principal unlock and reward
   settlement commands only.
+- User Lifecycle Integration is complete on `/staking`.
+- Action Required, Active Lock, Completed Reward History, OPEN Product, and
+  UPCOMING Product views are present.
+- Admin Principal Queue and Admin Reward Queue are present on
+  `/admin/staking-positions`.
+- Product and Position operations cross-links are present.
+- Integrated Lifecycle E2E is present as `npm run test:staking:lifecycle:local`.
+- Phase 4 Regression Orchestrator is present as
+  `npm run test:phase4:closeout:local`.
+- Database Freeze is maintained: migration changes 0, DB test changes 0, and
+  generated type changes 0 in NEW-P4-T05.
+- Phase 4 Closeout is complete when the orchestrator reports
+  `PHASE4_CLOSEOUT_PASS`.
 - Product commands still produce zero ledger journals and zero ledger entries.
 - No Service Role, remote Supabase, production credential, Solana package,
   wallet adapter, private key, mnemonic, client signing, mainnet RPC, or

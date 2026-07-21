@@ -172,9 +172,9 @@ export async function getCurrentStaking(): Promise<CurrentStakingResult> {
   return {
     status: "ready",
     wallet,
-    products: productRows,
-    balances: balanceRows,
-    positions: positionRows,
+      products: productRows.toSorted(compareProducts),
+      balances: balanceRows.toSorted(compareBalances),
+      positions: positionRows.toSorted(comparePositions),
   };
 }
 
@@ -467,4 +467,57 @@ function isSafeInteger(value: number, min: number, max: number): boolean {
 
 function isValidIsoDate(value: string): boolean {
   return !Number.isNaN(Date.parse(value));
+}
+
+function compareProducts(
+  left: CurrentStakingProduct,
+  right: CurrentStakingProduct,
+): number {
+  const stateOrder =
+    enrollmentStateOrder(left.enrollmentState) -
+    enrollmentStateOrder(right.enrollmentState);
+
+  if (stateOrder !== 0) {
+    return stateOrder;
+  }
+
+  return (
+    compareIsoAsc(left.enrollmentStartsAt, right.enrollmentStartsAt) ||
+    left.productCode.localeCompare(right.productCode) ||
+    left.stakingProductId.localeCompare(right.stakingProductId)
+  );
+}
+
+function compareBalances(
+  left: CurrentStakingBalance,
+  right: CurrentStakingBalance,
+): number {
+  return (
+    left.assetCode.localeCompare(right.assetCode) ||
+    left.assetId.localeCompare(right.assetId)
+  );
+}
+
+function comparePositions(
+  left: CurrentStakingPosition,
+  right: CurrentStakingPosition,
+): number {
+  return (
+    compareIsoDesc(
+      left.rewardSettledAt ?? left.unlockedAt ?? left.lockedAt,
+      right.rewardSettledAt ?? right.unlockedAt ?? right.lockedAt,
+    ) || left.stakingPositionId.localeCompare(right.stakingPositionId)
+  );
+}
+
+function enrollmentStateOrder(value: "UPCOMING" | "OPEN"): number {
+  return value === "OPEN" ? 0 : 1;
+}
+
+function compareIsoAsc(left: string, right: string): number {
+  return Date.parse(left) - Date.parse(right);
+}
+
+function compareIsoDesc(left: string, right: string): number {
+  return Date.parse(right) - Date.parse(left);
 }

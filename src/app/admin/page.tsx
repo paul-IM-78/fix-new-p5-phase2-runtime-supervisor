@@ -89,9 +89,16 @@ export default async function AdminPage() {
             dedicated AAL2 pages. Generic manual journals, deposit request
             commands, and withdrawal request commands each use dedicated
             pages. Withdrawal approval is not external settlement; staking
-            product administration is limited to product terms and status;
-            staking position review is read only; unlock and rewards remain
-            out of scope.
+            product administration is limited to product terms and status.
+            Staking position operations are a separate AAL2 area for matured
+            principal unlock and one-time reward settlement of existing
+            position obligations.
+          </p>
+          <p className="mt-2 text-sm leading-6 text-zinc-600">
+            Product status changes do not mutate existing positions. There is
+            no generic ledger posting UI, manual balance adjustment, wallet
+            address workflow, or on-chain staking control in this admin
+            surface.
           </p>
         </section>
 
