@@ -2,14 +2,14 @@
 
 Managed staking wallet web application baseline.
 
-Current phase: Phase 4 complete. Phase 3 double-entry ledger flows remain
-intact, and Phase 4 now covers staking product catalog metadata, AAL2
-administrator product lifecycle commands, user principal-lock position
-creation, database-derived maturity, matured principal unlock, one-time
-immutable snapshot reward settlement, user lifecycle screens, administrator
-operation queues, and local closeout regression. Unstaking, early exit,
-repeated reward claim, reward reversal, recurring accrual, APY/APR display,
-and chain integration remain out of scope.
+Current phase: Phase 5 custody boundary started. Phase 3 double-entry ledger
+flows and Phase 4 staking lifecycle remain intact. Phase 5 currently adds
+custody provider configuration metadata, internal account binding aliases,
+AAL2 administrator lifecycle commands, immutable custody configuration audit,
+and a read-only observation adapter type contract. Real custody provider
+connections, blockchain observation, webhook ingestion, payout submission,
+external account IDs, wallet addresses, transaction identifiers, private keys,
+mnemonics, mainnet, and production connectivity remain out of scope.
 
 ## Stack
 
@@ -56,6 +56,7 @@ npm run test:staking:position-unlock:local
 npm run test:staking:rewards:local
 npm run test:staking:lifecycle:local
 npm run test:phase4:closeout:local
+npm run test:custody:boundary:local
 ```
 
 ## Supabase Local
@@ -724,6 +725,47 @@ npm run test:staking:rewards:local
 npm run test:staking:lifecycle:local
 npm run test:phase4:closeout:local
 ```
+
+## Custody Boundary Domain
+
+Phase 5 starts with custody configuration and observation contracts only:
+
+```text
+GET /admin/custody
+POST /api/v1/admin/custody/providers/upsert-draft
+POST /api/v1/admin/custody/providers/transition
+POST /api/v1/admin/custody/bindings/upsert-draft
+POST /api/v1/admin/custody/bindings/transition
+```
+
+Provider and binding rows live in private tables and are changed only through
+AAL2 ADMIN command RPCs. Commands use expected-version concurrency,
+caller-supplied command IDs, idempotent replay, conflict detection, lifecycle
+transition matrices, and append-only custody configuration audit events.
+
+`private.custody_providers` stores non-secret provider metadata and capability
+flags. `private.custody_account_bindings` stores internal binding keys that are
+not blockchain addresses, provider account IDs, secret manager values, or
+transaction references. `private.custody_config_audit_events` omits request
+data from admin read RPCs.
+
+`src/server/custody/provider-observation-contract.ts` defines a future
+read-only adapter contract for health, balances, transfers, and lookup by
+evidence digest. It does not implement an adapter, import provider SDKs, call
+`fetch`, submit payouts, sign transactions, post ledger entries, or connect to
+chains.
+
+Run the local custody boundary regression after building. The script starts
+the local Supabase stack if needed, resets the DB, starts a temporary
+production Next.js server on `http://localhost:3010`, and cleans up afterward.
+
+```bash
+npm run test:custody:boundary:local
+```
+
+The Phase 4 closeout script is additive-safe for future DB tests: it still
+requires the original Phase 4 pgTAP baseline files and at least 15 files / 848
+tests, while allowing later phases to add more passing tests.
 
 ## Health Route
 

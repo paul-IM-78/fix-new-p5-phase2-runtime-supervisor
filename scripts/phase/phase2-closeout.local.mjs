@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { createCookieJar } from "../lib/http-cookie-jar.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,6 +14,7 @@ const PROJECT_LABEL = "staking-wallet-web";
 const NPM_EXEC_PATH = process.env.npm_execpath;
 const READINESS_ATTEMPTS_BEFORE_RESTART = 12;
 const READINESS_ATTEMPTS_AFTER_RESTART = 12;
+const LOCAL_AUTH_STABILITY_DELAY_MS = 8000;
 const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
@@ -21,45 +23,13 @@ const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-class CookieJar {
-  #cookies = new Map();
-
-  getHeader() {
-    return [...this.#cookies.entries()]
-      .map(([name, value]) => `${name}=${value}`)
-      .join("; ");
-  }
-
-  store(response) {
-    for (const header of getSetCookieHeaders(response.headers)) {
-      const parsed = parseSetCookie(header);
-
-      if (!parsed) {
-        continue;
-      }
-
-      if (parsed.deleteCookie) {
-        this.#cookies.delete(parsed.name);
-      } else {
-        this.#cookies.set(parsed.name, parsed.value);
-      }
-    }
-  }
-
-  hasSessionCookie() {
-    return [...this.#cookies.keys()].some(
-      (name) =>
-        name.startsWith("sb-") &&
-        name.includes("-auth-token") &&
-        !name.includes("code-verifier"),
-    );
-  }
-}
-
 async function main() {
   await assertPreconditions();
   await runExistingRegressionScripts();
   await resetLocalDatabase("dashboard-e2e-reset");
+  await restartProjectAuth();
+  await waitForLocalSupabaseReadiness("dashboard-e2e-auth restart readiness");
+  await wait(LOCAL_AUTH_STABILITY_DELAY_MS);
   await assertDashboardE2e();
   await assertStaticDashboardBoundary();
   pass("Phase 2 closeout integration");
@@ -203,7 +173,24 @@ async function restartProjectKong() {
   });
 }
 
+async function restartProjectAuth() {
+  const authContainer = await readProjectAuthContainerName();
+
+  await execFileAsync("docker", ["restart", authContainer], {
+    timeout: 30000,
+    windowsHide: true,
+  });
+}
+
 async function readProjectKongContainerName() {
+  return readProjectServiceContainerName("kong", `supabase_kong_${PROJECT_LABEL}`);
+}
+
+async function readProjectAuthContainerName() {
+  return readProjectServiceContainerName("auth", `supabase_auth_${PROJECT_LABEL}`);
+}
+
+async function readProjectServiceContainerName(composeServiceName, fallbackName) {
   const { stdout } = await execFileAsync(
     "docker",
     [
@@ -233,13 +220,16 @@ async function readProjectKongContainerName() {
     })
     .filter(
       (container) =>
-        (container.composeService === "kong" ||
-          container.name === `supabase_kong_${PROJECT_LABEL}`) &&
+        (container.composeService === composeServiceName ||
+          container.name === fallbackName) &&
         (container.supabaseProject === PROJECT_LABEL ||
           container.composeProject === PROJECT_LABEL),
     );
 
-  assert(containers.length === 1, "Project Kong container scope");
+  assert(
+    containers.length === 1,
+    `Project ${composeServiceName} container scope`,
+  );
 
   return containers[0].name;
 }
@@ -485,7 +475,7 @@ async function signUpConfirmAndSignIn(email, password, nextPath) {
 
   assert(Boolean(tokenHash), "Confirmation token");
 
-  const confirmJar = new CookieJar();
+  const confirmJar = createCookieJar();
   const confirm = await appFetch("/api/v1/auth/confirm", {
     method: "POST",
     jar: confirmJar,
@@ -514,7 +504,7 @@ async function signIn(email, password, nextPath) {
 }
 
 async function signInRaw(email, password, nextPath) {
-  const jar = new CookieJar();
+  const jar = createCookieJar();
   const response = await appFetch("/api/v1/auth/sign-in", {
     method: "POST",
     jar,
@@ -559,6 +549,7 @@ async function appFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers();
 
   if (body) {
@@ -574,14 +565,14 @@ async function appFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method,
     headers,
     body: body ? new URLSearchParams(body) : undefined,
@@ -589,7 +580,7 @@ async function appFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -967,6 +958,12 @@ async function sqlScalar(sql) {
   return stdout.trim().split(/\r?\n/).at(-1)?.trim() ?? "";
 }
 
+function parseJsonRow(payload, label) {
+  assert(Boolean(payload), label);
+
+  return JSON.parse(payload);
+}
+
 async function assertStatus(path, status, label) {
   const response = await appFetch(path, { redirect: "manual" });
   const body = await response.text();
@@ -1148,46 +1145,6 @@ function assertNoForbiddenFinancialUi(body, label) {
   ]) {
     assert(!lower.includes(marker), `${label} no ${marker}`);
   }
-}
-
-function getSetCookieHeaders(headers) {
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-
-  const header = headers.get("set-cookie");
-
-  return header ? splitSetCookieHeader(header) : [];
-}
-
-function splitSetCookieHeader(header) {
-  return header.split(/,(?=\s*[^;,=\s]+=[^;,]+)/);
-}
-
-function parseSetCookie(header) {
-  const [pair, ...attributes] = header.split(";");
-  const separatorIndex = pair.indexOf("=");
-
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  const name = pair.slice(0, separatorIndex).trim();
-  const value = pair.slice(separatorIndex + 1).trim();
-  const lowerAttributes = attributes.map((attribute) =>
-    attribute.trim().toLowerCase(),
-  );
-  const deleteCookie =
-    lowerAttributes.includes("max-age=0") ||
-    lowerAttributes.some((attribute) => attribute.startsWith("expires=thu"));
-
-  return { name, value, deleteCookie };
-}
-
-function parseJsonRow(payload, label) {
-  assert(Boolean(payload), label);
-
-  return JSON.parse(payload);
 }
 
 function decodeHtmlEntities(value) {

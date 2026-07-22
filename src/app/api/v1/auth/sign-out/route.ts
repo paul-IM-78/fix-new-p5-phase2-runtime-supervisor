@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createRouteSupabaseClient } from "@/lib/supabase/server";
 import { isSameOriginRequest } from "@/server/http/require-same-origin";
 
 export const runtime = "nodejs";
@@ -11,14 +11,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return redirectNoStore(request, "/auth/sign-in?error=request_rejected");
   }
 
-  const supabase = await createServerSupabaseClient();
+  const { supabase, withCookies } = createRouteSupabaseClient(request);
   const claims = await supabase.auth.getClaims();
 
   if (claims.data?.claims.sub || claims.error) {
     await supabase.auth.signOut();
   }
 
-  return redirectNoStore(request, "/auth/sign-in");
+  return withCookies(redirectNoStore(request, "/auth/sign-in"));
 }
 
 function redirectNoStore(

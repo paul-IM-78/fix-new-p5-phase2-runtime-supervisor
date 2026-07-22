@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { createCookieJar } from "../lib/http-cookie-jar.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -9,41 +10,6 @@ const MAILPIT_ORIGIN = "http://127.0.0.1:55724";
 const DB_CONTAINER = "supabase_db_staking-wallet-web";
 const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
 const RECOVERY_SUBJECT = "Reset your Staking Wallet password";
-
-class CookieJar {
-  #cookies = new Map();
-
-  getHeader() {
-    return [...this.#cookies.entries()]
-      .map(([name, value]) => `${name}=${value}`)
-      .join("; ");
-  }
-
-  store(response) {
-    for (const header of getSetCookieHeaders(response.headers)) {
-      const parsed = parseSetCookie(header);
-
-      if (!parsed) {
-        continue;
-      }
-
-      if (parsed.deleteCookie) {
-        this.#cookies.delete(parsed.name);
-      } else {
-        this.#cookies.set(parsed.name, parsed.value);
-      }
-    }
-  }
-
-  hasSessionCookie() {
-    return [...this.#cookies.keys()].some(
-      (name) =>
-        name.startsWith("sb-") &&
-        name.includes("-auth-token") &&
-        !name.includes("code-verifier"),
-    );
-  }
-}
 
 async function main() {
   const suffix = randomUUID().replaceAll("-", "");
@@ -191,7 +157,7 @@ async function signUpAndConfirm(email, password) {
     "Confirmation type",
   );
 
-  const getJar = new CookieJar();
+  const getJar = createCookieJar();
   const getPage = await appFetch(
     `${confirmationUrl.pathname}${confirmationUrl.search}`,
     {
@@ -202,7 +168,7 @@ async function signUpAndConfirm(email, password) {
   assert(getPage.status === 200, "Confirmation GET status");
   assert(!getJar.hasSessionCookie(), "Confirmation GET has no session");
 
-  const confirmJar = new CookieJar();
+  const confirmJar = createCookieJar();
   const confirm = await appFetch("/api/v1/auth/confirm", {
     method: "POST",
     jar: confirmJar,
@@ -310,7 +276,7 @@ async function pollRecoveryToken(email, excludedTokens = new Set()) {
 }
 
 async function assertRecoveryGetDoesNotConsumeToken(tokenHash, email, password) {
-  const jar = new CookieJar();
+  const jar = createCookieJar();
   const page = await appFetch(
     `/auth/recovery?token_hash=${encodeURIComponent(tokenHash)}&type=recovery`,
     {
@@ -432,8 +398,11 @@ async function assertOneShotPasswordUpdate(
   const update = await submitOneShotPassword(tokenHash, newPassword);
   assertRedirectPath(update, "/auth/password-updated", "Password updated");
 
-  const postUpdateJar = new CookieJar();
-  postUpdateJar.store(update);
+  const postUpdateJar = createCookieJar();
+  postUpdateJar.store(
+    update,
+    new URL("/api/v1/auth/password-reset/update", APP_ORIGIN),
+  );
   const accountWithUpdateCookie = await appFetch("/account", {
     jar: postUpdateJar,
     redirect: "manual",
@@ -578,7 +547,7 @@ async function assertInactiveRecoveryBlocked(email, password, tokenHash) {
 }
 
 async function signIn(email, password) {
-  const jar = new CookieJar();
+  const jar = createCookieJar();
   const signInResponse = await appFetch("/api/v1/auth/sign-in", {
     method: "POST",
     jar,
@@ -612,6 +581,7 @@ async function appFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers();
 
   if (body) {
@@ -627,14 +597,14 @@ async function appFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method,
     headers,
     body: body ? new URLSearchParams(body) : undefined,
@@ -642,7 +612,7 @@ async function appFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -890,40 +860,6 @@ function formatSafeRedirect(url) {
   const code = url.searchParams.get("error") ?? url.searchParams.get("code");
 
   return code ? `${url.pathname}?code=${code}` : url.pathname;
-}
-
-function getSetCookieHeaders(headers) {
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-
-  const header = headers.get("set-cookie");
-
-  return header ? splitSetCookieHeader(header) : [];
-}
-
-function splitSetCookieHeader(header) {
-  return header.split(/,(?=\s*[^;,=\s]+=[^;,]+)/);
-}
-
-function parseSetCookie(header) {
-  const [pair, ...attributes] = header.split(";");
-  const separatorIndex = pair.indexOf("=");
-
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  const name = pair.slice(0, separatorIndex).trim();
-  const value = pair.slice(separatorIndex + 1).trim();
-  const lowerAttributes = attributes.map((attribute) =>
-    attribute.trim().toLowerCase(),
-  );
-  const deleteCookie =
-    lowerAttributes.includes("max-age=0") ||
-    lowerAttributes.some((attribute) => attribute.startsWith("expires=thu"));
-
-  return { name, value, deleteCookie };
 }
 
 function decodeHtmlEntities(value) {

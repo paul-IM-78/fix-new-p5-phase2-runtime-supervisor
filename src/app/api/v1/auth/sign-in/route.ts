@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { mapSupabaseAuthErrorCode } from "@/lib/auth/public-errors";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createRouteSupabaseClient } from "@/lib/supabase/server";
 import { inspectAccountAccess } from "@/server/auth/account-guard";
 import { parseSignInForm } from "@/server/auth/form-data";
 import { isSameOriginRequest } from "@/server/http/require-same-origin";
@@ -24,9 +24,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return redirectNoStore(request, `/auth/sign-in?error=${parsed.error}`);
   }
 
-  const supabase = await createServerSupabaseClient();
+  const { supabase, withCookies } = createRouteSupabaseClient(request);
   const { email, password, nextPath } = parsed.value;
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -43,38 +43,53 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  if (data.session) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
+
   const accountAccess = await inspectAccountAccess(supabase);
 
   if (accountAccess.status === "active") {
-    return redirectNoStore(request, nextPath);
+    return withCookies(redirectNoStore(request, nextPath));
   }
 
   await supabase.auth.signOut();
 
   if (accountAccess.status === "missing_profile") {
-    return redirectNoStore(
-      request,
-      "/auth/sign-in?error=account_unavailable",
+    return withCookies(
+      redirectNoStore(
+        request,
+        "/auth/sign-in?error=account_unavailable",
+      ),
     );
   }
 
   if (accountAccess.status === "inactive") {
-    return redirectNoStore(
-      request,
-      "/auth/sign-in?error=account_restricted",
+    return withCookies(
+      redirectNoStore(
+        request,
+        "/auth/sign-in?error=account_restricted",
+      ),
     );
   }
 
   if (accountAccess.status === "unavailable") {
-    return redirectNoStore(
-      request,
-      "/auth/sign-in?error=auth_unavailable",
+    return withCookies(
+      redirectNoStore(
+        request,
+        "/auth/sign-in?error=auth_unavailable",
+      ),
     );
   }
 
-  return redirectNoStore(
-    request,
-    "/auth/sign-in?error=invalid_credentials",
+  return withCookies(
+    redirectNoStore(
+      request,
+      "/auth/sign-in?error=invalid_credentials",
+    ),
   );
 }
 

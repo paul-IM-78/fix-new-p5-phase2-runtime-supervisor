@@ -4,6 +4,7 @@ import { execFile, spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { promisify } from "node:util";
+import { createCookieJar } from "../lib/http-cookie-jar.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,41 +18,6 @@ const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-class CookieJar {
-  #cookies = new Map();
-
-  getHeader() {
-    return [...this.#cookies.entries()]
-      .map(([name, value]) => `${name}=${value}`)
-      .join("; ");
-  }
-
-  store(response) {
-    for (const header of getSetCookieHeaders(response.headers)) {
-      const parsed = parseSetCookie(header);
-
-      if (!parsed) {
-        continue;
-      }
-
-      if (parsed.deleteCookie) {
-        this.#cookies.delete(parsed.name);
-      } else {
-        this.#cookies.set(parsed.name, parsed.value);
-      }
-    }
-  }
-
-  hasSessionCookie() {
-    return [...this.#cookies.keys()].some(
-      (name) =>
-        name.startsWith("sb-") &&
-        name.includes("-auth-token") &&
-        !name.includes("code-verifier"),
-    );
-  }
-}
 
 async function main() {
   const runtime = await prepareManagedAppRuntime();
@@ -2000,7 +1966,7 @@ async function signUpConfirmAndSignIn(email, password, nextPath) {
 
   assert(Boolean(tokenHash), "Confirmation token");
 
-  const confirmJar = new CookieJar();
+  const confirmJar = createCookieJar();
   const confirm = await appFetch("/api/v1/auth/confirm", {
     method: "POST",
     jar: confirmJar,
@@ -2018,7 +1984,7 @@ async function signUpConfirmAndSignIn(email, password, nextPath) {
 }
 
 async function signIn(email, password, nextPath) {
-  const jar = new CookieJar();
+  const jar = createCookieJar();
   const response = await appFetch("/api/v1/auth/sign-in", {
     method: "POST",
     jar,
@@ -2344,6 +2310,7 @@ async function appFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers();
   const cleanBody = filterBody(body);
 
@@ -2360,14 +2327,14 @@ async function appFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method,
     headers,
     body: cleanBody ? new URLSearchParams(cleanBody) : undefined,
@@ -2375,7 +2342,7 @@ async function appFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -2392,6 +2359,7 @@ async function appJsonFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers({
     "content-type": "application/json",
   });
@@ -2405,14 +2373,14 @@ async function appJsonFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(body ?? {}),
@@ -2420,7 +2388,7 @@ async function appJsonFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -2882,40 +2850,6 @@ function assertNoSensitiveBody(body, label) {
   ]) {
     assert(!body.includes(marker), `${label} no ${marker}`);
   }
-}
-
-function getSetCookieHeaders(headers) {
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-
-  const header = headers.get("set-cookie");
-
-  return header ? splitSetCookieHeader(header) : [];
-}
-
-function splitSetCookieHeader(header) {
-  return header.split(/,(?=\s*[^;,=\s]+=[^;,]+)/);
-}
-
-function parseSetCookie(header) {
-  const [pair, ...attributes] = header.split(";");
-  const separatorIndex = pair.indexOf("=");
-
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  const name = pair.slice(0, separatorIndex).trim();
-  const value = pair.slice(separatorIndex + 1).trim();
-  const lowerAttributes = attributes.map((attribute) =>
-    attribute.trim().toLowerCase(),
-  );
-  const deleteCookie =
-    lowerAttributes.includes("max-age=0") ||
-    lowerAttributes.some((attribute) => attribute.startsWith("expires=thu"));
-
-  return { name, value, deleteCookie };
 }
 
 function filterBody(body) {

@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -14,6 +14,25 @@ const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
 const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const READINESS_ATTEMPTS = 18;
 const LOCAL_AUTH_STABILITY_DELAY_MS = 8000;
+const PHASE4_DB_BASELINE_FILES = 15;
+const PHASE4_DB_BASELINE_TESTS = 848;
+const PHASE4_BASELINE_DB_TEST_FILES = [
+  "supabase/tests/database/admin_authorization.test.sql",
+  "supabase/tests/database/admin_role_commands.test.sql",
+  "supabase/tests/database/auth_identity.test.sql",
+  "supabase/tests/database/deposit_state_machine.test.sql",
+  "supabase/tests/database/domain_lifecycle_commands.test.sql",
+  "supabase/tests/database/double_entry_ledger_core.test.sql",
+  "supabase/tests/database/opening_balance_corrections.test.sql",
+  "supabase/tests/database/project_asset_wallet_domain.test.sql",
+  "supabase/tests/database/staking_position_lock.test.sql",
+  "supabase/tests/database/staking_position_unlock.test.sql",
+  "supabase/tests/database/staking_product_domain.test.sql",
+  "supabase/tests/database/staking_reward_settlement.test.sql",
+  "supabase/tests/database/wallet_account_status_commands.test.sql",
+  "supabase/tests/database/withdrawal_execution_settlement.test.sql",
+  "supabase/tests/database/withdrawal_state_machine.test.sql",
+];
 
 async function main() {
   let server = null;
@@ -32,18 +51,19 @@ async function main() {
 
     await runNpmScript("db:reset:local", "Closeout DB reset", 180000);
     await runNpmScript("db:lint:local", "Closeout DB lint", 180000);
+    assertPhase4BaselineDbTestFiles();
     const dbTestOutput = await runNpmScript(
       "db:test:local",
       "Closeout pgTAP",
       300000,
     );
-    assert(
-      dbTestOutput.includes("Files=15, Tests=848") &&
-        dbTestOutput.includes("Result: PASS"),
-      "Closeout pgTAP count",
+    assertPgTapBaseline(dbTestOutput);
+    const generatedTypesBefore = readFileSync(
+      "src/types/database.types.ts",
+      "utf8",
     );
     await runNpmScript("db:types:local", "Closeout DB types", 180000);
-    await assertGeneratedTypeDiff();
+    assertGeneratedTypeDiff(generatedTypesBefore);
     await assertQaResidue();
 
     await stopProductionServer(server);
@@ -121,6 +141,66 @@ async function runSuiteScript(scriptName, label, timeout) {
   }
 }
 
+function assertPhase4BaselineDbTestFiles() {
+  const seen = new Set();
+
+  assert(
+    PHASE4_BASELINE_DB_TEST_FILES.length === PHASE4_DB_BASELINE_FILES,
+    "Phase 4 baseline DB test count",
+  );
+
+  for (const filePath of PHASE4_BASELINE_DB_TEST_FILES) {
+    assert(!seen.has(filePath), "Phase 4 baseline DB test duplicate");
+    assert(filePath.endsWith(".test.sql"), "Phase 4 baseline DB test extension");
+    assert(existsSync(filePath), "PHASE4_BASELINE_DB_TEST_MISSING");
+    assert(statSync(filePath).isFile(), "Phase 4 baseline DB test file");
+    seen.add(filePath);
+  }
+
+  console.log(`PHASE4_DB_BASELINE_FILES=${PHASE4_DB_BASELINE_FILES}`);
+  console.log(`PHASE4_DB_BASELINE_TESTS=${PHASE4_DB_BASELINE_TESTS}`);
+  pass("Phase 4 baseline DB test files");
+}
+
+function assertPgTapBaseline(output) {
+  const summary = parsePgTapSummary(output);
+
+  console.log(`DB_OBSERVED_FILES=${summary.files}`);
+  console.log(`DB_OBSERVED_TESTS=${summary.tests}`);
+
+  assert(summary.files >= PHASE4_DB_BASELINE_FILES, "Closeout pgTAP files");
+  assert(summary.tests >= PHASE4_DB_BASELINE_TESTS, "Closeout pgTAP tests");
+  assert(summary.resultPass, "Closeout pgTAP result");
+  assert(summary.skipCount === 0, "Closeout pgTAP skip");
+  pass("PHASE4_DB_BASELINE_PASS");
+}
+
+function parsePgTapSummary(output) {
+  const summaryMatch = output.match(/Files=(\d+),\s*Tests=(\d+)/);
+
+  assert(Boolean(summaryMatch), "Closeout pgTAP summary parse");
+
+  const explicitSkipMatches = [
+    ...output.matchAll(/\b(?:Skipped|Skip)=(\d+)\b/gi),
+  ];
+  const skipCount = explicitSkipMatches.reduce(
+    (total, match) => total + Number(match[1]),
+    0,
+  );
+
+  assert(
+    explicitSkipMatches.length > 0 || !/#\s*SKIP\b/i.test(output),
+    "Closeout pgTAP skip parse",
+  );
+
+  return {
+    files: Number(summaryMatch[1]),
+    tests: Number(summaryMatch[2]),
+    resultPass: /Result:\s*PASS\b/.test(output),
+    skipCount,
+  };
+}
+
 async function assertProductionSmoke() {
   const expected = [
     ["/api/v1/health", 200],
@@ -167,10 +247,13 @@ async function assertStatus(path, status, label) {
   assertOutputSafe(body, `${label} body`);
 }
 
-async function assertGeneratedTypeDiff() {
-  const clean = await gitPathClean("src/types/database.types.ts");
+function assertGeneratedTypeDiff(expectedContent) {
+  const currentContent = readFileSync(
+    "src/types/database.types.ts",
+    "utf8",
+  );
 
-  assert(clean, "Generated type diff");
+  assert(currentContent === expectedContent, "Generated type diff");
   pass("Generated type diff 0");
 }
 

@@ -606,6 +606,50 @@ export type Database = {
       }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_admin_aal2: { Args: never; Returns: boolean }
+      list_admin_custody_account_bindings: {
+        Args: { p_limit?: number; p_status?: string }
+        Returns: {
+          account_role: string
+          approved_at: string
+          asset_code: string
+          asset_id: string
+          asset_status: string
+          asset_symbol: string
+          asset_type: string
+          binding_key: string
+          created_at: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          display_label: string
+          provider_code: string
+          retired_at: string
+          status: string
+          suspended_at: string
+          updated_at: string
+          version: number
+        }[]
+      }
+      list_admin_custody_providers: {
+        Args: { p_limit?: number; p_status?: string }
+        Returns: {
+          approved_at: string
+          created_at: string
+          custody_provider_id: string
+          display_name: string
+          provider_code: string
+          provider_type: string
+          retired_at: string
+          status: string
+          supports_balance_observation: boolean
+          supports_payout_submission: boolean
+          supports_transfer_lookup: boolean
+          supports_transfer_observation: boolean
+          supports_webhook_ingestion: boolean
+          suspended_at: string
+          updated_at: string
+          version: number
+        }[]
+      }
       list_admin_deposit_requests: {
         Args: { p_before_deposit_request_id?: string; p_limit?: number }
         Returns: {
@@ -979,6 +1023,25 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      list_custody_config_audit_events: {
+        Args: { p_before_event_id?: string; p_limit?: number }
+        Returns: {
+          action: string
+          actor_user_id: string
+          asset_id: string
+          command_id: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          entity_type: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          outcome: string
+          previous_status: string
+          reason: string
+          resulting_status: string
+        }[]
+      }
       list_deposit_command_audit_events: {
         Args: { p_before_event_id?: string; p_limit?: number }
         Returns: {
@@ -1339,6 +1402,46 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      transition_custody_account_binding_status: {
+        Args: {
+          p_command_id: string
+          p_custody_account_binding_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      transition_custody_provider_status: {
+        Args: {
+          p_command_id: string
+          p_custody_provider_id: string
+          p_expected_version: number
+          p_new_status: string
+          p_reason: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
       transition_project_status: {
         Args: {
           p_command_id: string
@@ -1521,6 +1624,57 @@ export type Database = {
           event_id: string
           occurred_at: string
           project_id: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      upsert_custody_account_binding_draft: {
+        Args: {
+          p_account_role?: string
+          p_asset_id?: string
+          p_binding_key?: string
+          p_command_id?: string
+          p_custody_account_binding_id?: string
+          p_custody_provider_id?: string
+          p_display_label?: string
+          p_expected_version?: number
+          p_reason?: string
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
+          replayed: boolean
+          result_code: string
+        }[]
+      }
+      upsert_custody_provider_draft: {
+        Args: {
+          p_command_id?: string
+          p_custody_provider_id?: string
+          p_display_name?: string
+          p_expected_version?: number
+          p_provider_code?: string
+          p_provider_type?: string
+          p_reason?: string
+          p_supports_balance_observation?: boolean
+          p_supports_payout_submission?: boolean
+          p_supports_transfer_lookup?: boolean
+          p_supports_transfer_observation?: boolean
+          p_supports_webhook_ingestion?: boolean
+        }
+        Returns: {
+          asset_id: string
+          command_id: string
+          custody_account_binding_id: string
+          custody_provider_id: string
+          entity_version: number
+          event_id: string
+          occurred_at: string
           replayed: boolean
           result_code: string
         }[]

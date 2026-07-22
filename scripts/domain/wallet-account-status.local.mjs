@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { createCookieJar } from "../lib/http-cookie-jar.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -11,41 +12,6 @@ const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
 const BASE58_MINT = "11111111111111111111111111111132";
-
-class CookieJar {
-  #cookies = new Map();
-
-  getHeader() {
-    return [...this.#cookies.entries()]
-      .map(([name, value]) => `${name}=${value}`)
-      .join("; ");
-  }
-
-  store(response) {
-    for (const header of getSetCookieHeaders(response.headers)) {
-      const parsed = parseSetCookie(header);
-
-      if (!parsed) {
-        continue;
-      }
-
-      if (parsed.deleteCookie) {
-        this.#cookies.delete(parsed.name);
-      } else {
-        this.#cookies.set(parsed.name, parsed.value);
-      }
-    }
-  }
-
-  hasSessionCookie() {
-    return [...this.#cookies.keys()].some(
-      (name) =>
-        name.startsWith("sb-") &&
-        name.includes("-auth-token") &&
-        !name.includes("code-verifier"),
-    );
-  }
-}
 
 async function main() {
   const suffix = randomUUID().replaceAll("-", "");
@@ -720,7 +686,7 @@ async function signUpConfirmAndSignIn(email, password, nextPath) {
 
   assert(Boolean(tokenHash), "Confirmation token");
 
-  const confirmJar = new CookieJar();
+  const confirmJar = createCookieJar();
   const confirm = await appFetch("/api/v1/auth/confirm", {
     method: "POST",
     jar: confirmJar,
@@ -738,7 +704,7 @@ async function signUpConfirmAndSignIn(email, password, nextPath) {
 }
 
 async function signIn(email, password, nextPath) {
-  const jar = new CookieJar();
+  const jar = createCookieJar();
   const response = await appFetch("/api/v1/auth/sign-in", {
     method: "POST",
     jar,
@@ -794,6 +760,7 @@ async function appFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers();
 
   if (body) {
@@ -809,14 +776,14 @@ async function appFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method,
     headers,
     body: body ? new URLSearchParams(body) : undefined,
@@ -824,7 +791,7 @@ async function appFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -841,6 +808,7 @@ async function appJsonFetch(
     redirect = "manual",
   } = {},
 ) {
+  const requestUrl = new URL(path, APP_ORIGIN);
   const headers = new Headers({
     "content-type": "application/json",
   });
@@ -854,14 +822,14 @@ async function appJsonFetch(
   }
 
   if (jar) {
-    const cookieHeader = jar.getHeader();
+    const cookieHeader = jar.getHeader(requestUrl);
 
     if (cookieHeader) {
       headers.set("cookie", cookieHeader);
     }
   }
 
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
+  const response = await fetch(requestUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(body ?? {}),
@@ -869,7 +837,7 @@ async function appJsonFetch(
   });
 
   if (jar) {
-    jar.store(response);
+    jar.store(response, requestUrl);
   }
 
   return response;
@@ -1391,40 +1359,6 @@ async function assertFactorSecretNotPrinted(enrollment) {
   assert(isUuid(enrollment.factorId), "Factor id shape");
   assert(isBase32Secret(enrollment.secret), "Secret shape");
   pass("MFA material process-only");
-}
-
-function getSetCookieHeaders(headers) {
-  if (typeof headers.getSetCookie === "function") {
-    return headers.getSetCookie();
-  }
-
-  const header = headers.get("set-cookie");
-
-  return header ? splitSetCookieHeader(header) : [];
-}
-
-function splitSetCookieHeader(header) {
-  return header.split(/,(?=\s*[^;,=\s]+=[^;,]+)/);
-}
-
-function parseSetCookie(header) {
-  const [pair, ...attributes] = header.split(";");
-  const separatorIndex = pair.indexOf("=");
-
-  if (separatorIndex <= 0) {
-    return null;
-  }
-
-  const name = pair.slice(0, separatorIndex).trim();
-  const value = pair.slice(separatorIndex + 1).trim();
-  const lowerAttributes = attributes.map((attribute) =>
-    attribute.trim().toLowerCase(),
-  );
-  const deleteCookie =
-    lowerAttributes.includes("max-age=0") ||
-    lowerAttributes.some((attribute) => attribute.startsWith("expires=thu"));
-
-  return { name, value, deleteCookie };
 }
 
 function decodeHtmlEntities(value) {

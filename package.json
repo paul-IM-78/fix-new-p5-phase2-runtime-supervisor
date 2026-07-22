@@ -15,6 +15,7 @@
     "db:test:local": "supabase test db --local",
     "db:types:local": "supabase gen types typescript --local --schema public > src/types/database.types.ts",
     "db:migration:new": "supabase migration new",
+    "test:http:cookie-jar:local": "node scripts/lib/http-cookie-jar.selftest.mjs",
     "test:auth:routes:local": "node scripts/auth/auth-routes.local.mjs",
     "test:auth:admin-mfa:local": "node scripts/auth/admin-mfa.local.mjs",
     "test:auth:admin-roles:local": "node scripts/auth/admin-role-commands.local.mjs",
@@ -33,7 +34,8 @@
     "test:staking:position-unlock:local": "node scripts/staking/staking-position-unlock.local.mjs",
     "test:staking:rewards:local": "node scripts/staking/staking-rewards.local.mjs",
     "test:staking:lifecycle:local": "node scripts/staking/staking-lifecycle.local.mjs",
-    "test:phase4:closeout:local": "node scripts/phase/phase4-closeout.local.mjs"
+    "test:phase4:closeout:local": "node scripts/phase/phase4-closeout.local.mjs",
+    "test:custody:boundary:local": "node scripts/custody/custody-boundary.local.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

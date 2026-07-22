@@ -153,6 +153,12 @@ export default async function AdminPage() {
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/custody"
+          >
+            Custody config
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
             href="/account"
           >
             Account

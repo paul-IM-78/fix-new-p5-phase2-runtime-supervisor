@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { mapSupabaseAuthErrorCode } from "@/lib/auth/public-errors";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createRouteSupabaseClient } from "@/lib/supabase/server";
 import { inspectAccountAccess } from "@/server/auth/account-guard";
 import { parseConfirmEmailForm } from "@/server/auth/form-data";
 import { isSameOriginRequest } from "@/server/http/require-same-origin";
@@ -24,9 +24,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return redirectNoStore(request, `/auth/error?code=${parsed.error}`);
   }
 
-  const supabase = await createServerSupabaseClient();
+  const { supabase, withCookies } = createRouteSupabaseClient(request);
   const { tokenHash, nextPath } = parsed.value;
-  const { error } = await supabase.auth.verifyOtp({
+  const { data, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type: "email",
   });
@@ -40,26 +40,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return redirectNoStore(request, `/auth/error?code=${publicCode}`);
   }
 
+  if (data.session) {
+    await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+  }
+
   const accountAccess = await inspectAccountAccess(supabase);
 
   if (accountAccess.status === "active") {
-    return redirectNoStore(
-      request,
-      `/auth/verified?next=${encodeURIComponent(nextPath)}`,
+    return withCookies(
+      redirectNoStore(
+        request,
+        `/auth/verified?next=${encodeURIComponent(nextPath)}`,
+      ),
     );
   }
 
   await supabase.auth.signOut();
 
   if (accountAccess.status === "missing_profile") {
-    return redirectNoStore(request, "/auth/error?code=account_unavailable");
+    return withCookies(
+      redirectNoStore(request, "/auth/error?code=account_unavailable"),
+    );
   }
 
   if (accountAccess.status === "inactive") {
-    return redirectNoStore(request, "/auth/error?code=account_restricted");
+    return withCookies(
+      redirectNoStore(request, "/auth/error?code=account_restricted"),
+    );
   }
 
-  return redirectNoStore(request, "/auth/error?code=auth_unavailable");
+  return withCookies(
+    redirectNoStore(request, "/auth/error?code=auth_unavailable"),
+  );
 }
 
 function isSupportedFormRequest(request: NextRequest): boolean {
