@@ -18,6 +18,7 @@ const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 
 async function main() {
   await assertPreconditions();
+  await resetLocalDatabase("Phase 3 initial reset");
   await runPhase3RegressionScripts();
   await assertStaticFinancialBoundary();
   pass("Phase 3 closeout integration");
@@ -25,29 +26,22 @@ async function main() {
 
 async function assertPreconditions() {
   assert(existsSync(".env.local"), ".env.local precondition");
-  await assertStatus("/api/v1/health", 200, "Health precondition");
-  await assertStatus(
-    "/api/v1/readiness/config",
-    200,
-    "Readiness precondition",
-  );
-  await assertMailpitReady();
-  await assertDatabaseReady();
+  await waitForLocalSupabaseReadiness("Phase 3 closeout precondition readiness");
   pass("Phase 3 closeout preconditions");
 }
 
 async function runPhase3RegressionScripts() {
   const scripts = [
-    ["test:phase2:closeout:local", "Phase 2 closeout", 600000],
-    ["test:ledger:core:local", "Ledger core", 240000],
-    ["test:ledger:opening-corrections:local", "Opening corrections", 300000],
-    ["test:ledger:deposits:local", "Deposit state machine", 300000],
-    ["test:ledger:withdrawals:local", "Withdrawal state machine", 360000],
-    ["test:ledger:withdrawal-execution:local", "Withdrawal execution", 420000],
-    ["test:ledger:balance-overview:local", "Balance overview", 240000],
+    ["test:phase2:closeout:local", "Phase 2 closeout", 600000, true],
+    ["test:ledger:core:local", "Ledger core", 240000, false],
+    ["test:ledger:opening-corrections:local", "Opening corrections", 300000, false],
+    ["test:ledger:deposits:local", "Deposit state machine", 300000, false],
+    ["test:ledger:withdrawals:local", "Withdrawal state machine", 360000, false],
+    ["test:ledger:withdrawal-execution:local", "Withdrawal execution", 420000, false],
+    ["test:ledger:balance-overview:local", "Balance overview", 240000, false],
   ];
 
-  for (const [scriptName, label, timeout] of scripts) {
+  for (const [scriptName, label, timeout, useSharedAppOrigin] of scripts) {
     if (scriptName === "test:phase2:closeout:local") {
       await waitForLocalSupabaseReadiness(`${label} readiness`);
       await wait(LOCAL_AUTH_STABILITY_DELAY_MS);
@@ -55,7 +49,7 @@ async function runPhase3RegressionScripts() {
       await resetLocalDatabase(`${label} reset`);
     }
 
-    await runNpmScript(scriptName, label, timeout);
+    await runNpmScript(scriptName, label, timeout, { useSharedAppOrigin });
     await waitForLocalSupabaseReadiness(`${label} readiness`);
   }
 }
@@ -66,17 +60,18 @@ async function resetLocalDatabase(label) {
   await wait(LOCAL_AUTH_STABILITY_DELAY_MS);
 }
 
-async function runNpmScript(scriptName, label, timeout) {
+async function runNpmScript(
+  scriptName,
+  label,
+  timeout,
+  { useSharedAppOrigin } = {},
+) {
   try {
     const { stdout, stderr } = await execFileAsync(
       process.execPath,
       getNpmArgs(scriptName),
       {
-        env: {
-          ...process.env,
-          APP_ORIGIN,
-          NEXT_PUBLIC_SITE_URL: APP_ORIGIN,
-        },
+        env: buildChildScriptEnv({ useSharedAppOrigin }),
         timeout,
         windowsHide: true,
         maxBuffer: 1024 * 1024 * 10,
@@ -98,6 +93,20 @@ async function runNpmScript(scriptName, label, timeout) {
     assertOutputSafe(output, `${label} failure output`);
     throw new Error(`FAIL ${label}`);
   }
+}
+
+function buildChildScriptEnv({ useSharedAppOrigin } = {}) {
+  const env = { ...process.env };
+
+  if (useSharedAppOrigin) {
+    env.APP_ORIGIN = APP_ORIGIN;
+    env.NEXT_PUBLIC_SITE_URL = APP_ORIGIN;
+  } else {
+    delete env.APP_ORIGIN;
+    delete env.NEXT_PUBLIC_SITE_URL;
+  }
+
+  return env;
 }
 
 async function runNpmScriptWithoutReset(scriptName, label, timeout) {
@@ -294,32 +303,6 @@ async function assertStaticFinancialBoundary() {
     "Balance page safe redirect",
   );
   pass("Phase 3 static financial boundary");
-}
-
-async function assertStatus(path, status, label) {
-  const response = await fetch(`${APP_ORIGIN}${path}`, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(3000),
-  });
-  const body = await response.text();
-
-  assert(response.status === status, label);
-  assertOutputSafe(body, `${label} body`);
-}
-
-async function assertMailpitReady() {
-  const response = await fetch(`${MAILPIT_ORIGIN}/api/v1/messages`, {
-    redirect: "manual",
-    signal: AbortSignal.timeout(3000),
-  });
-
-  assert(response.ok, "Mailpit precondition");
-}
-
-async function assertDatabaseReady() {
-  const result = await sqlScalar("select 'ready';");
-
-  assert(result === "ready", "Database precondition");
 }
 
 async function fetchStatus(url) {

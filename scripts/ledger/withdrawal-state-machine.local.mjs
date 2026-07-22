@@ -16,6 +16,10 @@ const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const FETCH_DIAGNOSTIC_TIMEOUT_MS = 2000;
+
+let managedRuntimeServer = null;
+const managedRuntimeOutputTail = [];
 
 async function main() {
   const runtime = await prepareManagedAppRuntime();
@@ -195,20 +199,21 @@ async function prepareManagedAppRuntime() {
     windowsHide: true,
   });
 
-  const outputTail = [];
-
   for (const stream of [server.stdout, server.stderr]) {
     stream.setEncoding("utf8");
     stream.on("data", (chunk) => {
-      outputTail.push(chunk);
+      for (const line of chunk.split(/\r?\n/).filter(Boolean)) {
+        managedRuntimeOutputTail.push(line);
 
-      if (outputTail.length > 20) {
-        outputTail.shift();
+        if (managedRuntimeOutputTail.length > 20) {
+          managedRuntimeOutputTail.shift();
+        }
       }
     });
   }
 
   await waitForManagedAppRuntime(server);
+  managedRuntimeServer = server;
 
   return server;
 }
@@ -225,6 +230,23 @@ async function stopManagedAppRuntime(server) {
     }),
     wait(5000),
   ]);
+  await waitForManagedAppPortRelease();
+  managedRuntimeServer = null;
+}
+
+async function waitForManagedAppPortRelease() {
+  const deadline = Date.now() + 5000;
+  const appUrl = new URL(APP_ORIGIN);
+
+  while (Date.now() < deadline) {
+    if ((await diagnosticPortListener(appUrl)) === "none") {
+      return;
+    }
+
+    await wait(250);
+  }
+
+  throw new Error("FAIL managed Next server port cleanup");
 }
 
 async function waitForManagedAppRuntime(server) {
@@ -1699,12 +1721,16 @@ async function appFetch(
     }
   }
 
-  const response = await fetch(requestUrl, {
-    method,
-    headers,
-    body: cleanBody ? new URLSearchParams(cleanBody) : undefined,
-    redirect,
-  });
+  const response = await fetchWithDiagnostics(
+    requestUrl,
+    {
+      method,
+      headers,
+      body: cleanBody ? new URLSearchParams(cleanBody) : undefined,
+      redirect,
+    },
+    `${method} ${requestUrl.pathname}`,
+  );
 
   if (jar) {
     jar.store(response, requestUrl);
@@ -1745,18 +1771,149 @@ async function appJsonFetch(
     }
   }
 
-  const response = await fetch(requestUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body ?? {}),
-    redirect,
-  });
+  const response = await fetchWithDiagnostics(
+    requestUrl,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body ?? {}),
+      redirect,
+    },
+    `POST ${requestUrl.pathname}`,
+  );
 
   if (jar) {
     jar.store(response, requestUrl);
   }
 
   return response;
+}
+
+async function fetchWithDiagnostics(requestUrl, init, label) {
+  const url = new URL(requestUrl);
+  const requestedAt = new Date().toISOString();
+
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw new Error(
+      await buildFetchFailureDiagnostic({
+        error,
+        label,
+        method: init?.method ?? "GET",
+        requestedAt,
+        url,
+      }),
+    );
+  }
+}
+
+async function buildFetchFailureDiagnostic({
+  error,
+  label,
+  method,
+  requestedAt,
+  url,
+}) {
+  const cause = error?.cause ?? {};
+  const [appHealth, appReadiness, mailpit, database, portListener] =
+    await Promise.all([
+      diagnosticFetchStatus(`${APP_ORIGIN}/api/v1/health`),
+      diagnosticFetchStatus(`${APP_ORIGIN}/api/v1/readiness/config`),
+      diagnosticFetchStatus(`${MAILPIT_ORIGIN}/api/v1/messages`),
+      diagnosticDatabaseReady(),
+      diagnosticPortListener(url),
+    ]);
+  const serverOutput = managedRuntimeOutputTail.length > 0
+    ? ` server_tail=${redactDiagnostic(managedRuntimeOutputTail.slice(-3).join(" | "))}`
+    : "";
+
+  return [
+    "FETCH_FAILED",
+    `label=${label}`,
+    `method=${method}`,
+    `origin=${url.origin}`,
+    `path=${url.pathname}`,
+    `requested_at=${requestedAt}`,
+    `app_process=${diagnosticAppProcessState()}`,
+    `app_health=${appHealth}`,
+    `app_readiness=${appReadiness}`,
+    `mailpit=${mailpit}`,
+    `database=${database}`,
+    `port_listener=${portListener}`,
+    `error_name=${safeDiagnosticValue(error?.name)}`,
+    `error_message=${safeDiagnosticValue(error?.message)}`,
+    `cause_code=${safeDiagnosticValue(cause?.code)}`,
+    `cause_errno=${safeDiagnosticValue(cause?.errno)}`,
+    `cause_syscall=${safeDiagnosticValue(cause?.syscall)}`,
+    `cause_address=${safeDiagnosticValue(cause?.address)}`,
+    `cause_port=${safeDiagnosticValue(cause?.port)}`,
+  ].join(" ") + serverOutput;
+}
+
+async function diagnosticFetchStatus(url) {
+  try {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(FETCH_DIAGNOSTIC_TIMEOUT_MS),
+    });
+
+    return String(response.status);
+  } catch (error) {
+    return `fetch_error:${safeDiagnosticValue(error?.cause?.code ?? error?.name)}`;
+  }
+}
+
+async function diagnosticDatabaseReady() {
+  try {
+    return (await sqlScalar("select 'ready';")) === "ready" ? "ready" : "not_ready";
+  } catch {
+    return "not_ready";
+  }
+}
+
+async function diagnosticPortListener(url) {
+  if (process.platform !== "win32") {
+    return "not_checked";
+  }
+
+  try {
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], {
+      timeout: 10000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const hasListener = stdout
+      .split(/\r?\n/)
+      .some((line) => line.includes("LISTENING") && line.includes(`:${port} `));
+
+    return hasListener ? "present" : "none";
+  } catch {
+    return "unknown";
+  }
+}
+
+function diagnosticAppProcessState() {
+  if (process.env.APP_ORIGIN) {
+    return "external";
+  }
+
+  if (!managedRuntimeServer) {
+    return "managed_not_started";
+  }
+
+  return managedRuntimeServer.exitCode === null
+    ? "managed_running"
+    : `managed_exited:${safeDiagnosticValue(managedRuntimeServer.exitCode)}:${safeDiagnosticValue(managedRuntimeServer.signalCode)}`;
+}
+
+function safeDiagnosticValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "none";
+  }
+
+  return redactDiagnostic(String(value)).replace(/\s+/g, "_");
 }
 
 async function assertStatus(path, status, label) {
