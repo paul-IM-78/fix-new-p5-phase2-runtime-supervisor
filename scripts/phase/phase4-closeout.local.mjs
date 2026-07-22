@@ -1,5 +1,6 @@
 import { execFile, spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -16,6 +17,7 @@ const READINESS_ATTEMPTS = 18;
 const LOCAL_AUTH_STABILITY_DELAY_MS = 8000;
 const PHASE4_DB_BASELINE_FILES = 15;
 const PHASE4_DB_BASELINE_TESTS = 848;
+const PACKAGE_INVARIANCE_FILES = ["package.json", "package-lock.json"];
 const PHASE4_BASELINE_DB_TEST_FILES = [
   "supabase/tests/database/admin_authorization.test.sql",
   "supabase/tests/database/admin_role_commands.test.sql",
@@ -36,6 +38,7 @@ const PHASE4_BASELINE_DB_TEST_FILES = [
 
 async function main() {
   let server = null;
+  const packageBaseline = await capturePackageFilesBaseline();
 
   try {
     await assertLocalPreconditions();
@@ -75,7 +78,7 @@ async function main() {
     await assertProductionSmoke();
 
     await assertSecretAndFinancialMarkers();
-    await assertPackageLockClean();
+    await assertPackageFilesInvariance(packageBaseline);
     await stopProductionServer(server);
     server = null;
     await runNpmScriptSensitive("supabase:stop", "Supabase stop", 120000);
@@ -317,11 +320,116 @@ async function assertSecretAndFinancialMarkers() {
   pass("Secret and financial marker scan");
 }
 
-async function assertPackageLockClean() {
-  const clean = await gitPathClean("package-lock.json");
+async function capturePackageFilesBaseline() {
+  const baseline = new Map();
 
-  assert(clean, "Package lock clean");
-  pass("Package lock unchanged");
+  for (const filePath of PACKAGE_INVARIANCE_FILES) {
+    const metadata = await readPackageFileMetadata(filePath);
+
+    assert(metadata.exists, "PACKAGE_FILE_MISSING_BEFORE_CLOSEOUT");
+    assert(metadata.regularFile, "Package baseline regular file");
+    assert(!metadata.git.untracked, "Package baseline tracked file");
+    assert(!metadata.git.conflicted, "Package baseline conflict-free");
+
+    baseline.set(filePath, metadata);
+  }
+
+  pass("PACKAGE_FILES_BASELINE_CAPTURED");
+
+  return baseline;
+}
+
+async function assertPackageFilesInvariance(baseline) {
+  for (const filePath of PACKAGE_INVARIANCE_FILES) {
+    const before = baseline.get(filePath);
+    const after = await readPackageFileMetadata(filePath);
+
+    assert(Boolean(before), "PACKAGE_FILE_BASELINE_MISSING");
+    assert(after.exists, "PACKAGE_FILE_MISSING_AFTER_CLOSEOUT");
+    assert(after.regularFile, "Package invariant regular file");
+
+    if (before.sha256 !== after.sha256 || before.size !== after.size) {
+      assert(
+        false,
+        filePath === "package.json"
+          ? "PACKAGE_MANIFEST_CHANGED_DURING_CLOSEOUT"
+          : "PACKAGE_LOCK_CHANGED_DURING_CLOSEOUT",
+      );
+    }
+
+    assert(
+      before.git.statusCode === after.git.statusCode &&
+        before.git.staged === after.git.staged &&
+        before.git.unstaged === after.git.unstaged &&
+        before.git.untracked === after.git.untracked,
+      "PACKAGE_FILE_STATUS_CHANGED_DURING_CLOSEOUT",
+    );
+
+    if (filePath === "package.json") {
+      pass("PACKAGE_MANIFEST_UNCHANGED_DURING_CLOSEOUT");
+    } else {
+      pass("PACKAGE_LOCK_UNCHANGED_DURING_CLOSEOUT");
+    }
+  }
+
+  pass("PACKAGE_FILES_INVARIANCE_PASS");
+}
+
+async function readPackageFileMetadata(filePath) {
+  const exists = existsSync(filePath);
+
+  if (!exists) {
+    return {
+      path: filePath,
+      exists: false,
+      regularFile: false,
+      size: null,
+      sha256: null,
+      git: await readPackageFileGitState(filePath),
+    };
+  }
+
+  const stats = statSync(filePath);
+  const linkStats = lstatSync(filePath);
+  const content = readFileSync(filePath);
+
+  return {
+    path: filePath,
+    exists: true,
+    regularFile: linkStats.isFile() && stats.isFile(),
+    size: stats.size,
+    sha256: createHash("sha256").update(content).digest("hex"),
+    git: await readPackageFileGitState(filePath),
+  };
+}
+
+async function readPackageFileGitState(filePath) {
+  const output = await execText(
+    "git",
+    ["status", "--porcelain=v1", "--", filePath],
+    10000,
+  );
+  const lines = output
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((line) => !line.startsWith("warning: "));
+
+  assert(lines.length <= 1, "Package git status singular");
+
+  const statusCode = lines.length === 0 ? "  " : lines[0].slice(0, 2);
+  const stagedCode = statusCode[0] ?? " ";
+  const unstagedCode = statusCode[1] ?? " ";
+  const conflicted =
+    statusCode.includes("U") ||
+    ["AA", "DD", "AU", "UD", "UA", "DU"].includes(statusCode);
+
+  return {
+    statusCode,
+    staged: stagedCode !== " " && stagedCode !== "?",
+    unstaged: unstagedCode !== " " && unstagedCode !== "?",
+    untracked: statusCode === "??",
+    conflicted,
+  };
 }
 
 async function assertProcessCleanup() {
@@ -653,28 +761,6 @@ function parseGitPathOutput(output) {
     .split(/\r?\n/)
     .filter(Boolean)
     .filter((line) => !line.startsWith("warning: "));
-}
-
-async function gitPathClean(pathspec) {
-  try {
-    await execFileAsync("git", ["diff", "--quiet", "--", pathspec], {
-      timeout: 10000,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024 * 4,
-    });
-
-    return true;
-  } catch (error) {
-    const output = `${error?.stdout ?? ""}${error?.stderr ?? ""}`;
-
-    assertOutputSafe(output, `git diff ${pathspec} output`);
-
-    if (error?.code === 1) {
-      return false;
-    }
-
-    throw error;
-  }
 }
 
 async function readWorkingFile(path) {
