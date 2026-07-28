@@ -1,8 +1,13 @@
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { createCookieJar } from "../lib/http-cookie-jar.mjs";
+import {
+  runPhase2LeafBatchThroughSupervisor,
+  runPhase2LeafThroughSupervisor,
+  runPhase2SupervisorBarrierStress,
+} from "../lib/local-runtime-supervisor.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -14,7 +19,6 @@ const PROJECT_LABEL = "staking-wallet-web";
 const NPM_EXEC_PATH = process.env.npm_execpath;
 const READINESS_ATTEMPTS_BEFORE_RESTART = 12;
 const READINESS_ATTEMPTS_AFTER_RESTART = 12;
-const LOCAL_AUTH_STABILITY_DELAY_MS = 8000;
 const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
 const UUID_PATTERN =
   /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
@@ -22,17 +26,116 @@ const EMAIL_PATTERN = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/;
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const PHASE2_SUPERVISOR_MODE = process.env.PHASE2_SUPERVISOR_MODE ?? "full";
+const PHASE2_SUPERVISOR_LEAF = process.env.PHASE2_SUPERVISOR_LEAF ?? "";
+const PHASE2_SUPERVISOR_REPEAT_COUNT = Number.parseInt(
+  process.env.PHASE2_SUPERVISOR_REPEAT_COUNT ?? "1",
+  10,
+);
+const PHASE2_LEAVES = [
+  {
+    leaf: "auth_routes",
+    scriptName: "test:auth:routes:local",
+    label: "Auth route E2E",
+    timeoutMs: 420000,
+  },
+  {
+    leaf: "admin_mfa",
+    scriptName: "test:auth:admin-mfa:local",
+    label: "ADMIN MFA E2E",
+    timeoutMs: 540000,
+  },
+  {
+    leaf: "admin_role_commands",
+    scriptName: "test:auth:admin-roles:local",
+    label: "ADMIN role command E2E",
+    timeoutMs: 540000,
+  },
+  {
+    leaf: "domain_lifecycle",
+    scriptName: "test:domain:admin-lifecycle:local",
+    label: "Domain lifecycle E2E",
+    timeoutMs: 600000,
+  },
+  {
+    leaf: "wallet_status",
+    scriptName: "test:domain:wallet-status:local",
+    label: "Wallet status E2E",
+    timeoutMs: 540000,
+  },
+  {
+    leaf: "dashboard",
+    scriptName: "test:phase2:closeout:local",
+    label: "Dashboard E2E",
+    timeoutMs: 420000,
+    env: {
+      PHASE2_SUPERVISOR_MODE: "dashboard_leaf",
+    },
+  },
+];
+
+installParentExitObservers();
 
 async function main() {
-  await assertPreconditions();
+  emitParentSafe("main_start", "start");
+  retainLegacyPhase2Helpers();
+
+  if (PHASE2_SUPERVISOR_MODE === "barrier_stress") {
+    await runPhase2SupervisorBarrierStress(50);
+    return;
+  }
+
+  if (PHASE2_SUPERVISOR_MODE === "dashboard_leaf") {
+    await assertDashboardE2e();
+    await assertStaticDashboardBoundary();
+    pass("PHASE2_DASHBOARD_LEAF_PASS");
+    return;
+  }
+
+  if (PHASE2_SUPERVISOR_MODE === "leaf_direct") {
+    await runRequestedPhase2Leaf();
+    return;
+  }
+
+  if (PHASE2_SUPERVISOR_MODE === "leaf_repeat") {
+    await runRepeatedPhase2Leaf();
+    return;
+  }
+
+  assert(PHASE2_SUPERVISOR_MODE === "full", "Phase 2 supervisor mode");
   await runExistingRegressionScripts();
-  await resetLocalDatabase("dashboard-e2e-reset");
-  await restartProjectAuth();
-  await waitForLocalSupabaseReadiness("dashboard-e2e-auth restart readiness");
-  await wait(LOCAL_AUTH_STABILITY_DELAY_MS);
-  await assertDashboardE2e();
-  await assertStaticDashboardBoundary();
   pass("Phase 2 closeout integration");
+}
+
+async function runRequestedPhase2Leaf() {
+  const leaf = PHASE2_LEAVES.find(
+    (candidate) => candidate.leaf === PHASE2_SUPERVISOR_LEAF,
+  );
+
+  assert(Boolean(leaf), "Phase 2 requested supervisor leaf");
+  await runPhase2LeafThroughSupervisor(leaf);
+}
+
+async function runRepeatedPhase2Leaf() {
+  const leaf = PHASE2_LEAVES.find(
+    (candidate) => candidate.leaf === PHASE2_SUPERVISOR_LEAF,
+  );
+
+  assert(Boolean(leaf), "Phase 2 requested repeated supervisor leaf");
+  assert(
+    Number.isInteger(PHASE2_SUPERVISOR_REPEAT_COUNT) &&
+      PHASE2_SUPERVISOR_REPEAT_COUNT >= 1 &&
+      PHASE2_SUPERVISOR_REPEAT_COUNT <= 50,
+    "Phase 2 supervisor repeat count",
+  );
+
+  await runPhase2LeafBatchThroughSupervisor({
+    batchLabel: `${leaf.leaf}_repeat_${PHASE2_SUPERVISOR_REPEAT_COUNT}`,
+    leaves: Array.from({ length: PHASE2_SUPERVISOR_REPEAT_COUNT }, (_, index) => ({
+      ...leaf,
+      leaf: `${leaf.leaf}_${index + 1}`,
+    })),
+  });
 }
 
 async function assertPreconditions() {
@@ -49,18 +152,24 @@ async function assertPreconditions() {
 }
 
 async function runExistingRegressionScripts() {
-  const scripts = [
-    ["test:auth:routes:local", "Auth route E2E"],
-    ["test:auth:admin-mfa:local", "ADMIN MFA E2E"],
-    ["test:auth:admin-roles:local", "ADMIN role command E2E"],
-    ["test:domain:admin-lifecycle:local", "Domain lifecycle E2E"],
-    ["test:domain:wallet-status:local", "Wallet status E2E"],
-  ];
+  await runPhase2LeafBatchThroughSupervisor({
+    batchLabel: "phase2_closeout",
+    leaves: PHASE2_LEAVES,
+  });
+}
 
-  for (const [scriptName, label] of scripts) {
-    await resetLocalDatabase(`${label} reset`);
-    await runNpmScript(scriptName, label);
-  }
+function retainLegacyPhase2Helpers() {
+  return [
+    assertPreconditions,
+    runNpmScript,
+    resetLocalDatabase,
+    waitForLocalSupabaseReadiness,
+    restartProjectKong,
+    restartProjectAuth,
+    runNpmScriptWithoutReset,
+    assertMailpitReady,
+    assertDatabaseReady,
+  ].length;
 }
 
 async function runNpmScript(scriptName, label) {
@@ -1208,14 +1317,113 @@ function pass(label) {
   console.log(`PASS ${label}`);
 }
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : "FAIL unknown";
+main()
+  .then(() => {
+    emitParentSafe("main_resolved", "pass");
+    emitParentResourceSnapshot("main_resolved");
 
-  if (message.startsWith("FAIL ")) {
-    console.error(message);
-  } else {
-    console.error("FAIL phase 2 closeout");
+    if (process.exitCode === undefined) {
+      process.exitCode = 0;
+    }
+  })
+  .catch((error) => {
+    const message = error instanceof Error ? error.message : "FAIL unknown";
+
+    if (message.startsWith("FAIL ")) {
+      console.error(message);
+    } else {
+      console.error("FAIL phase 2 closeout");
+    }
+
+    emitParentSafe("main_resolved", "fail");
+    emitParentResourceSnapshot("main_resolved");
+    process.exitCode = 1;
+  });
+
+function installParentExitObservers() {
+  process.once("beforeExit", (code) => {
+    writeSafeLine("PHASE2_PARENT_BEFORE_EXIT_OBSERVED=true");
+    writeSafeLine(`PHASE2_PARENT_EXIT_CODE=${safeExitCode(code)}`);
+    writeSafeLine(formatParentResourceSnapshot("before_exit"));
+  });
+  process.once("exit", (code) => {
+    writeSafeLine("PHASE2_PARENT_EXIT_OBSERVED=true");
+    writeSafeLine(`PHASE2_PARENT_EXIT_CODE=${safeExitCode(code)}`);
+  });
+}
+
+function emitParentSafe(stage, result) {
+  console.log(
+    `PHASE2_PARENT_SAFE stage=${safeLabel(stage)} result=${safeExitToken(result)}`,
+  );
+}
+
+function emitParentResourceSnapshot(stage) {
+  console.log(formatParentResourceSnapshot(stage));
+}
+
+function formatParentResourceSnapshot(stage) {
+  const counts = readActiveResourceCounts();
+
+  return [
+    "PHASE2_PARENT_RESOURCE_SAFE",
+    `stage=${safeLabel(stage)}`,
+    `Timeout=${counts.Timeout}`,
+    `Immediate=${counts.Immediate}`,
+    `TCPSocketWrap=${counts.TCPSocketWrap}`,
+    `PipeWrap=${counts.PipeWrap}`,
+    `ChildProcess=${counts.ChildProcess}`,
+    `MessagePort=${counts.MessagePort}`,
+    `FSReqCallback=${counts.FSReqCallback}`,
+    `Other=${counts.Other}`,
+  ].join(" ");
+}
+
+function readActiveResourceCounts() {
+  const counts = {
+    Timeout: 0,
+    Immediate: 0,
+    TCPSocketWrap: 0,
+    PipeWrap: 0,
+    ChildProcess: 0,
+    MessagePort: 0,
+    FSReqCallback: 0,
+    Other: 0,
+  };
+  const resourceInfo =
+    typeof process.getActiveResourcesInfo === "function"
+      ? process.getActiveResourcesInfo()
+      : [];
+
+  for (const typeName of resourceInfo) {
+    if (Object.hasOwn(counts, typeName)) {
+      counts[typeName] += 1;
+    } else {
+      counts.Other += 1;
+    }
   }
 
-  process.exitCode = 1;
-});
+  return counts;
+}
+
+function writeSafeLine(line) {
+  writeSync(1, `${line}\n`);
+}
+
+function safeExitCode(code) {
+  return Number.isInteger(code) ? String(code) : "unknown";
+}
+
+function safeLabel(value) {
+  return String(value ?? "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9_ -]+/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 80);
+}
+
+function safeExitToken(value) {
+  const text = String(value ?? "unknown");
+
+  return /^[A-Za-z0-9_.:-]+$/.test(text) ? text : "unknown";
+}

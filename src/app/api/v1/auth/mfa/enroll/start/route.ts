@@ -94,6 +94,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const enrollmentResult = await enrollTotpFactor(supabase);
 
   if (!enrollmentResult.ok) {
+    logMfaEnrollSafe(
+      "upstream_result",
+      mapEnrollmentResult(enrollmentResult.stage),
+      mapEnrollmentSafeClass(enrollmentResult.stage),
+      enrollmentResult.httpStatus ?? 503,
+    );
+    logMfaEnrollSafe("public_mapping", "fail", "upstream_error", 503);
+
     return jsonNoStore(
       { status: "error", code: "mfa_enrollment_failed" },
       503,
@@ -105,6 +113,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const secret = validateTotpSecret(enrollmentResult.data.totp.secret);
 
   if (!factorId || !qrCode || !secret) {
+    logMfaEnrollSafe(
+      !factorId ? "response_shape" : !qrCode ? "qr_shape" : "secret_shape",
+      "invalid",
+      !factorId
+        ? "upstream_shape_invalid"
+        : !qrCode
+          ? "qr_shape_invalid"
+          : "secret_shape_invalid",
+      503,
+    );
+    logMfaEnrollSafe("public_mapping", "fail", "upstream_shape_invalid", 503);
+
     return jsonNoStore(
       { status: "error", code: "mfa_enrollment_failed" },
       503,
@@ -142,8 +162,8 @@ function mapIdentityError(
 async function enrollTotpFactor(
   supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
 ): Promise<
-  | { ok: true; data: RawTotpEnrollment }
-  | { ok: false; stage: string; httpStatus?: number }
+  | { ok: true; data: RawTotpEnrollment; httpStatus: number }
+  | { ok: false; stage: EnrollmentFailureStage; httpStatus?: number }
 > {
   const sessionResult = await supabase.auth.getSession();
   const accessToken = sessionResult.data.session?.access_token;
@@ -175,8 +195,77 @@ async function enrollTotpFactor(
   const data = readRawTotpEnrollment(payload);
 
   return data
-    ? { ok: true, data }
+    ? { ok: true, data, httpStatus: response.status }
     : { ok: false, stage: "shape", httpStatus: response.status };
+}
+
+type EnrollmentFailureStage = "session" | "http" | "shape";
+
+type SafeMfaEnrollStage =
+  | "upstream_result"
+  | "response_shape"
+  | "qr_shape"
+  | "secret_shape"
+  | "public_mapping";
+
+type SafeMfaEnrollResult =
+  | "pass"
+  | "fail"
+  | "non_ok"
+  | "invalid";
+
+type SafeMfaEnrollClass =
+  | "none"
+  | "session_invalid"
+  | "upstream_error"
+  | "upstream_non_ok"
+  | "upstream_shape_invalid"
+  | "qr_shape_invalid"
+  | "secret_shape_invalid";
+
+function logMfaEnrollSafe(
+  stage: SafeMfaEnrollStage,
+  result: SafeMfaEnrollResult,
+  safeClass: SafeMfaEnrollClass = "none",
+  status?: number,
+): void {
+  const safeStatus =
+    typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= 100 &&
+    status <= 599
+      ? status
+      : "none";
+
+  console.info(
+    `MFA_ENROLL_SAFE stage=${stage} result=${result} class=${safeClass} status=${safeStatus}`,
+  );
+}
+
+function mapEnrollmentResult(
+  stage: EnrollmentFailureStage,
+): SafeMfaEnrollResult {
+  switch (stage) {
+    case "http":
+      return "non_ok";
+    case "shape":
+      return "invalid";
+    case "session":
+      return "fail";
+  }
+}
+
+function mapEnrollmentSafeClass(
+  stage: EnrollmentFailureStage,
+): SafeMfaEnrollClass {
+  switch (stage) {
+    case "http":
+      return "upstream_non_ok";
+    case "shape":
+      return "upstream_shape_invalid";
+    case "session":
+      return "session_invalid";
+  }
 }
 
 type RawTotpEnrollment = {
@@ -229,11 +318,11 @@ function readRawTotpEnrollment(
 function normalizeQrCode(value: string): string | null {
   const trimmed = value.trim();
   const base64Image = readBase64Image(trimmed);
+  const rawSvgMarkup = isRawSvgMarkup(trimmed);
 
   if (
     !trimmed.startsWith("data:image/") &&
-    !trimmed.startsWith("<svg") &&
-    !trimmed.startsWith("<?xml") &&
+    !rawSvgMarkup &&
     !/^%3c(svg|%3fxml)/i.test(trimmed) &&
     !base64Image
   ) {
@@ -242,15 +331,23 @@ function normalizeQrCode(value: string): string | null {
 
   const dataUri = normalizeQrDataUri(trimmed, base64Image);
 
-  if (
-    dataUri.length < 32 ||
-    dataUri.length > 500000 ||
-    !dataUri.startsWith("data:image/")
-  ) {
-    return null;
+  if (isValidNormalizedQrDataUri(dataUri)) {
+    return dataUri;
   }
 
-  return dataUri;
+  if (rawSvgMarkup) {
+    const svgDataUri = normalizeRawSvgDataUri(trimmed);
+
+    if (isValidNormalizedQrDataUri(svgDataUri)) {
+      return svgDataUri;
+    }
+  }
+
+  return null;
+}
+
+function isRawSvgMarkup(value: string): boolean {
+  return /^<\?xml/i.test(value) || /^<svg/i.test(value);
 }
 
 function normalizeQrDataUri(
@@ -272,6 +369,27 @@ function normalizeQrDataUri(
   return `data:image/svg+xml;base64,${Buffer.from(value, "utf8").toString(
     "base64",
   )}`;
+}
+
+function normalizeRawSvgDataUri(value: string): string {
+  return `data:image/svg+xml;utf-8,${encodeSvgDataUri(value)}`;
+}
+
+function encodeSvgDataUri(value: string): string {
+  return value
+    .replaceAll("%", "%25")
+    .replaceAll("#", "%23")
+    .replaceAll("<", "%3C")
+    .replaceAll(">", "%3E")
+    .replaceAll('"', "'");
+}
+
+function isValidNormalizedQrDataUri(value: string): boolean {
+  return (
+    value.length >= 32 &&
+    value.length <= 500000 &&
+    value.startsWith("data:image/")
+  );
 }
 
 type Base64Image = {

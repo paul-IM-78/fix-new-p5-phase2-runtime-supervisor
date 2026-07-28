@@ -2,10 +2,12 @@ import { execFile } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { createCookieJar } from "../lib/http-cookie-jar.mjs";
+import { localFetch } from "../lib/local-http-harness.mjs";
+import { waitForLocalAuthHandoffReady } from "../lib/local-auth-handoff.mjs";
 
 const execFileAsync = promisify(execFile);
 
-const APP_ORIGIN = "http://localhost:3000";
+const APP_ORIGIN = process.env.APP_ORIGIN ?? "http://localhost:3000";
 const MAILPIT_ORIGIN = "http://127.0.0.1:55724";
 const DB_CONTAINER = "supabase_db_staking-wallet-web";
 const CONFIRMATION_SUBJECT = "Confirm your Staking Wallet account";
@@ -20,6 +22,7 @@ async function main() {
   const userEmail = `qa-wallet-user-${Date.now()}-${suffix.slice(8, 16)}@example.test`;
   const secondUserEmail = `qa-wallet-user-b-${Date.now()}-${suffix.slice(16, 24)}@example.test`;
 
+  await waitForLocalAuthHandoffReady("Wallet status auth handoff");
   await assertPublicSmoke();
   await assertSameOriginRejectionsWithoutSession();
 
@@ -783,7 +786,7 @@ async function appFetch(
     }
   }
 
-  const response = await fetch(requestUrl, {
+  const response = await localFetch(requestUrl, {
     method,
     headers,
     body: body ? new URLSearchParams(body) : undefined,
@@ -829,7 +832,7 @@ async function appJsonFetch(
     }
   }
 
-  const response = await fetch(requestUrl, {
+  const response = await localFetch(requestUrl, {
     method: "POST",
     headers,
     body: JSON.stringify(body ?? {}),
@@ -854,7 +857,7 @@ async function pollMailpitLink(email, subject, expectedPath) {
 
   while (Date.now() < deadline) {
     const payload = await (
-      await fetch(`${MAILPIT_ORIGIN}/api/v1/messages`, {
+      await localFetch(`${MAILPIT_ORIGIN}/api/v1/messages`, {
         redirect: "manual",
       })
     ).json();
@@ -871,7 +874,7 @@ async function pollMailpitLink(email, subject, expectedPath) {
       }
 
       const html = await (
-        await fetch(`${MAILPIT_ORIGIN}/view/${encodeURIComponent(id)}.html`, {
+        await localFetch(`${MAILPIT_ORIGIN}/view/${encodeURIComponent(id)}.html`, {
           redirect: "manual",
         })
       ).text();
