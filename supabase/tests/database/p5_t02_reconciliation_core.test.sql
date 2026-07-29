@@ -146,6 +146,7 @@ select extensions.ok(
       and column_name in (
         'id',
         'reconciliation_run_id',
+        'scope_kind',
         'custody_account_binding_id',
         'asset_id',
         'external_balance_observation_id',
@@ -157,7 +158,7 @@ select extensions.ok(
         'created_at'
       )
     group by table_schema, table_name
-    having count(*) = 11
+    having count(*) = 12
   ),
   'reconciliation item safe columns exist'
 );
@@ -241,7 +242,7 @@ select extensions.ok(
             and column_name in (
               'id',
               'reconciliation_run_id',
-              'custody_account_binding_id',
+              'scope_kind',
               'asset_id',
               'expected_units',
               'tolerance_units',
@@ -273,10 +274,10 @@ select extensions.ok(
           (table_name = 'external_balance_observations' and column_name = 'checkpoint_reference')
           or (table_name = 'external_transaction_observations' and column_name in ('confirmation_context', 'finalized_at'))
           or (table_name = 'reconciliation_runs' and column_name in ('requested_by_profile_id', 'started_at', 'completed_at', 'failure_code'))
-          or (table_name = 'reconciliation_items' and column_name in ('external_balance_observation_id', 'observed_units', 'difference_units'))
+          or (table_name = 'reconciliation_items' and column_name in ('custody_account_binding_id', 'external_balance_observation_id', 'observed_units', 'difference_units'))
         )
         and is_nullable = 'YES'
-    ) = 10
+    ) = 11
     and (
       select count(*)::integer
       from information_schema.columns
@@ -328,6 +329,13 @@ select extensions.ok(
         and table_name = 'reconciliation_items'
         and column_name = 'tolerance_units'
     ) = '0'
+    and (
+      select column_default
+      from information_schema.columns
+      where table_schema = 'private'
+        and table_name = 'reconciliation_items'
+        and column_name = 'scope_kind'
+    ) = '''BINDING''::text'
     and (
       select column_default
       from information_schema.columns
@@ -500,6 +508,8 @@ select extensions.ok(
       and conname in (
         'reconciliation_items_balance_observation_fk',
         'reconciliation_items_run_binding_asset_uidx',
+        'reconciliation_items_scope_kind_check',
+        'reconciliation_items_scope_consistency_check',
         'reconciliation_items_classification_check',
         'reconciliation_items_expected_units_check',
         'reconciliation_items_observed_units_check',
@@ -512,7 +522,7 @@ select extensions.ok(
         'reconciliation_items_mismatch_check'
       )
     group by conrelid
-    having count(*) = 12
+    having count(*) = 14
   ),
   'reconciliation item constraints exist'
 );
@@ -598,12 +608,14 @@ select extensions.ok(
         and tablename = 'reconciliation_items'
         and indexname in (
           'reconciliation_items_run_binding_asset_uidx',
+          'reconciliation_items_run_asset_aggregate_uidx',
           'reconciliation_items_run_idx',
           'reconciliation_items_classification_idx',
-          'reconciliation_items_binding_asset_idx'
+          'reconciliation_items_binding_asset_idx',
+          'reconciliation_items_scope_asset_idx'
         )
       group by schemaname, tablename
-      having count(*) = 4
+      having count(*) = 6
     )
     and exists (
       select 1
