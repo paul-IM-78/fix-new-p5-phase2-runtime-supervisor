@@ -308,6 +308,36 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      admin_open_review_case: {
+        Args: {
+          p_idempotency_key: string
+          p_reason_code: string
+          p_reconciliation_item_id: string
+        }
+        Returns: {
+          created: boolean
+          event_id: string
+          review_case_id: string
+          status: string
+          version: number
+        }[]
+      }
+      admin_transition_review_case: {
+        Args: {
+          p_expected_version: number
+          p_idempotency_key: string
+          p_reason_code: string
+          p_review_case_id: string
+          p_target_status: string
+        }
+        Returns: {
+          created: boolean
+          event_id: string
+          review_case_id: string
+          status: string
+          version: number
+        }[]
+      }
       approve_user_payout_request: {
         Args: {
           p_command_id: string
