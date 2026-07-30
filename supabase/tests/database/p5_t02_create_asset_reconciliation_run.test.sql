@@ -120,8 +120,12 @@ select extensions.ok(
       on namespaces.oid = procedures.pronamespace
     where namespaces.nspname = 'public'
       and procedures.proname ~* '(reconciliation|external_balance|external_transaction|observer_checkpoint)'
+      and procedures.proname not in (
+        'list_admin_reconciliation_items',
+        'get_admin_reconciliation_item_detail'
+      )
   ) = 0,
-  'writer adds no public reconciliation rpc'
+  'writer leaves only approved public reconciliation read RPCs'
 );
 
 select extensions.ok(
