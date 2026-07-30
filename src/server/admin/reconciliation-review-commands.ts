@@ -44,6 +44,21 @@ type OpenCommandRow =
   Database["public"]["Functions"]["admin_open_review_case"]["Returns"][number];
 type TransitionCommandRow =
   Database["public"]["Functions"]["admin_transition_review_case"]["Returns"][number];
+type ReconciliationReviewRpcDomainErrorCode =
+  | "reconciliation_resolution_idempotency_key_invalid"
+  | "reconciliation_resolution_reason_code_invalid"
+  | "reconciliation_resolution_expected_version_invalid"
+  | "reconciliation_resolution_status_invalid"
+  | "reconciliation_review_target_status_invalid"
+  | "reconciliation_item_not_found"
+  | "reconciliation_resolution_not_found"
+  | "reconciliation_item_not_reviewable"
+  | "reconciliation_resolution_already_exists"
+  | "reconciliation_resolution_idempotency_conflict"
+  | "reconciliation_resolution_version_conflict"
+  | "reconciliation_resolution_terminal"
+  | "reconciliation_resolution_transition_invalid"
+  | "reconciliation_resolution_existing_state_invalid";
 
 export async function executeReconciliationReviewAdminCommand(
   input: ReconciliationReviewAdminCommandInput,
@@ -132,10 +147,12 @@ function mapAdminAccessError(
   }
 }
 
-function mapRpcError(error: PostgrestError): ReconciliationReviewCommandError {
-  const message = error.message;
+function mapRpcError(
+  error: PostgrestError,
+): ReconciliationReviewCommandError {
+  const domainCode = readRpcDomainErrorCode(error);
 
-  switch (message) {
+  switch (domainCode) {
     case "reconciliation_resolution_idempotency_key_invalid":
     case "reconciliation_resolution_reason_code_invalid":
     case "reconciliation_resolution_expected_version_invalid":
@@ -187,13 +204,6 @@ function mapRpcError(error: PostgrestError): ReconciliationReviewCommandError {
     return { code: "admin_aal2_required", httpStatus: 403 };
   }
 
-  if (error.code === "40001") {
-    return {
-      code: "reconciliation_review_version_conflict",
-      httpStatus: 409,
-    };
-  }
-
   if (error.code === "22023") {
     return { code: "invalid_request", httpStatus: 400 };
   }
@@ -223,4 +233,40 @@ function mapRpcError(error: PostgrestError): ReconciliationReviewCommandError {
     code: "reconciliation_review_unavailable",
     httpStatus: 500,
   };
+}
+
+function readRpcDomainErrorCode(
+  error: PostgrestError,
+): ReconciliationReviewRpcDomainErrorCode | null {
+  for (const value of [error.message, error.details, error.hint]) {
+    if (isReconciliationReviewRpcDomainErrorCode(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function isReconciliationReviewRpcDomainErrorCode(
+  value: string | null | undefined,
+): value is ReconciliationReviewRpcDomainErrorCode {
+  switch (value) {
+    case "reconciliation_resolution_idempotency_key_invalid":
+    case "reconciliation_resolution_reason_code_invalid":
+    case "reconciliation_resolution_expected_version_invalid":
+    case "reconciliation_resolution_status_invalid":
+    case "reconciliation_review_target_status_invalid":
+    case "reconciliation_item_not_found":
+    case "reconciliation_resolution_not_found":
+    case "reconciliation_item_not_reviewable":
+    case "reconciliation_resolution_already_exists":
+    case "reconciliation_resolution_idempotency_conflict":
+    case "reconciliation_resolution_version_conflict":
+    case "reconciliation_resolution_terminal":
+    case "reconciliation_resolution_transition_invalid":
+    case "reconciliation_resolution_existing_state_invalid":
+      return true;
+    default:
+      return false;
+  }
 }
