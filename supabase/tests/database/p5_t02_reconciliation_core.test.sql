@@ -687,9 +687,13 @@ select extensions.is(
       on namespaces.oid = procedures.pronamespace
     where namespaces.nspname = 'public'
       and procedures.proname ~* '(reconciliation|external_balance|external_transaction|observer_checkpoint|observer_checkpoints)'
+      and procedures.proname not in (
+        'list_admin_reconciliation_items',
+        'get_admin_reconciliation_item_detail'
+      )
   ),
   0,
-  'no public reconciliation RPCs are created'
+  'no unapproved public reconciliation RPCs are created'
 );
 
 insert into public.supported_assets (

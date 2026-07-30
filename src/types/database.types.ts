@@ -618,6 +618,12 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      get_admin_reconciliation_item_detail: {
+        Args: { p_reconciliation_item_id: string }
+        Returns: {
+          payload: Json
+        }[]
+      }
       grant_admin_role: {
         Args: {
           p_command_id: string
@@ -754,6 +760,50 @@ export type Database = {
           status: string
           updated_at: string
           version: number
+        }[]
+      }
+      list_admin_reconciliation_items: {
+        Args: {
+          p_asset_id?: string
+          p_before_created_at?: string
+          p_before_item_id?: string
+          p_classification?: string
+          p_cutoff_from?: string
+          p_cutoff_to?: string
+          p_limit?: number
+          p_observer_kind?: string
+          p_review_state?: string
+          p_run_status?: string
+        }
+        Returns: {
+          asset_code: string
+          asset_decimals: number
+          asset_display_name: string
+          asset_id: string
+          asset_symbol: string
+          classification: string
+          completed_at: string
+          difference_units: string
+          expected_units: string
+          failed_binding_count: number
+          failure_code: string
+          item_created_at: string
+          missing_binding_count: number
+          observation_cutoff_at: string
+          observed_binding_count: number
+          observed_units: string
+          observer_kind: string
+          reconciliation_item_id: string
+          reconciliation_run_id: string
+          review_status: string
+          review_version: number
+          run_created_at: string
+          run_status: string
+          scope_kind: string
+          started_at: string
+          target_binding_count: number
+          tolerance_units: string
+          trigger_source: string
         }[]
       }
       list_admin_role_audit_events: {
