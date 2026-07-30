@@ -14,6 +14,15 @@ export type ReconciliationReviewCommandErrorCode =
   | "reconciliation_review_state_invalid"
   | "reconciliation_review_unavailable";
 
+export type ReconciliationReadErrorCode =
+  | "invalid_request"
+  | "admin_authentication_required"
+  | "admin_role_required"
+  | "admin_aal2_required"
+  | "admin_authentication_unavailable"
+  | "reconciliation_item_not_found"
+  | "reconciliation_read_unavailable";
+
 const RECONCILIATION_REVIEW_PUBLIC_MESSAGES: Record<
   ReconciliationReviewCommandErrorCode,
   string
@@ -54,4 +63,34 @@ export function isReconciliationReviewCommandErrorCode(
   code: string,
 ): code is ReconciliationReviewCommandErrorCode {
   return Object.hasOwn(RECONCILIATION_REVIEW_PUBLIC_MESSAGES, code);
+}
+
+const RECONCILIATION_READ_PUBLIC_MESSAGES: Record<
+  ReconciliationReadErrorCode,
+  string
+> = {
+  invalid_request: "Check the reconciliation read request values.",
+  admin_authentication_required:
+    "Sign in before using admin reconciliation reads.",
+  admin_role_required: "Administrator access is required.",
+  admin_aal2_required: "A verified administrator MFA session is required.",
+  admin_authentication_unavailable:
+    "Admin authentication is temporarily unavailable.",
+  reconciliation_item_not_found: "Reconciliation item was not found.",
+  reconciliation_read_unavailable:
+    "Reconciliation read data is unavailable.",
+};
+
+export function getReconciliationReadPublicMessage(
+  code: string | null | undefined,
+): string | null {
+  return code && isReconciliationReadErrorCode(code)
+    ? RECONCILIATION_READ_PUBLIC_MESSAGES[code]
+    : null;
+}
+
+export function isReconciliationReadErrorCode(
+  code: string,
+): code is ReconciliationReadErrorCode {
+  return Object.hasOwn(RECONCILIATION_READ_PUBLIC_MESSAGES, code);
 }
