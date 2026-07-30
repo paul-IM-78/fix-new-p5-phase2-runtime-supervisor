@@ -160,6 +160,7 @@ async function main() {
       await assertListHappyPath(adminJar, fixture);
       await assertListPagination(adminJar, fixture);
       await assertListValidation(adminJar);
+      await assertListCutoffMicrosecondRange(adminJar);
       await assertListFilters(adminJar, fixture);
       await assertDetailHappyPath(adminJar, fixture);
       await assertBindingProvenanceCounts(adminJar, fixture);
@@ -1386,6 +1387,56 @@ async function assertListValidation(jar) {
   pass("ADMIN_READ_LIST_VALIDATION");
 }
 
+async function assertListCutoffMicrosecondRange(jar) {
+  await getList(
+    jar,
+    listQuery({
+      cutoffFrom: "2026-07-30T03:00:00.123456Z",
+      cutoffTo: "2026-07-30T03:00:00.123457Z",
+    }),
+  );
+  console.log("ADMIN_READ_CUTOFF_MICROSECOND_ASCENDING=PASS");
+
+  await getList(
+    jar,
+    listQuery({
+      cutoffFrom: "2026-07-30T03:00:00.123456+00:00",
+      cutoffTo: "2026-07-30T03:00:00.123457Z",
+    }),
+  );
+  console.log("ADMIN_READ_CUTOFF_MICROSECOND_TIMEZONE=PASS");
+
+  await assertJsonError(
+    await appGet(
+      `/api/v1/admin/reconciliation/items${listQuery({
+        cutoffFrom: "2026-07-30T03:00:00.123457Z",
+        cutoffTo: "2026-07-30T03:00:00.123456Z",
+      })}`,
+      { jar },
+    ),
+    400,
+    "invalid_request",
+    "reversed microsecond cutoff range",
+  );
+  console.log("ADMIN_READ_CUTOFF_MICROSECOND_REVERSED=PASS");
+
+  await assertJsonError(
+    await appGet(
+      `/api/v1/admin/reconciliation/items${listQuery({
+        cutoffFrom: "2026-07-30T03:00:00.123456Z",
+        cutoffTo: "2026-07-30T03:00:00.123456Z",
+      })}`,
+      { jar },
+    ),
+    400,
+    "invalid_request",
+    "equal microsecond cutoff range",
+  );
+  console.log("ADMIN_READ_CUTOFF_MICROSECOND_EQUAL=PASS");
+
+  pass("ADMIN_READ_CUTOFF_MICROSECOND_RANGE");
+}
+
 async function assertListFilters(jar, fixture) {
   await assertFilterIds(
     jar,
@@ -1469,6 +1520,10 @@ async function assertListFilters(jar, fixture) {
 
   console.log("ADMIN_READ_FILTER_MATRIX=PASS");
   pass("ADMIN_READ_LIST_FILTERS");
+}
+
+function listQuery(params) {
+  return `?${new URLSearchParams(params).toString()}`;
 }
 
 async function assertFilterIds(jar, query, expectedIds, label) {

@@ -7,7 +7,7 @@ const FORBIDDEN_IDEMPOTENCY_MARKER_PATTERN =
 const REASON_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,63}$/;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 const ISO_TIMESTAMP_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/;
+  /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/;
 const OBSERVER_KIND_PATTERN = /^[A-Z0-9][A-Z0-9_]{1,63}$/;
 const SPOOFED_ACTOR_FIELD_NAMES = new Set([
   "actorProfileId",
@@ -200,14 +200,7 @@ export function parseAdminReconciliationListQuery(
   }
 
   if (cutoffFrom !== null && cutoffTo !== null) {
-    const fromTime = Date.parse(cutoffFrom);
-    const toTime = Date.parse(cutoffTo);
-
-    if (!Number.isFinite(fromTime) || !Number.isFinite(toTime)) {
-      return null;
-    }
-
-    if (fromTime >= toTime) {
+    if (!isTimestampRangeAscending(cutoffFrom, cutoffTo)) {
       return null;
     }
   }
@@ -440,6 +433,33 @@ function parseOptionalTimestamp(
   const time = Date.parse(normalized);
 
   return Number.isFinite(time) ? normalized : "invalid";
+}
+
+function isTimestampRangeAscending(from: string, to: string): boolean {
+  const fromMicros = parseTimestampToEpochMicros(from);
+  const toMicros = parseTimestampToEpochMicros(to);
+
+  return fromMicros !== null && toMicros !== null && fromMicros < toMicros;
+}
+
+function parseTimestampToEpochMicros(value: string): bigint | null {
+  const match = ISO_TIMESTAMP_PATTERN.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, date, time, fraction = "", timezone] = match;
+  const wholeSecondMilliseconds = Date.parse(`${date}T${time}${timezone}`);
+
+  if (!Number.isSafeInteger(wholeSecondMilliseconds)) {
+    return null;
+  }
+
+  const micros =
+    fraction === "" ? BigInt(0) : BigInt(fraction.padEnd(6, "0"));
+
+  return BigInt(wholeSecondMilliseconds) * BigInt(1000) + micros;
 }
 
 function readString(value: unknown): string | null {
