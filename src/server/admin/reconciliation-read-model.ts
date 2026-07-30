@@ -148,9 +148,8 @@ export async function listAdminReconciliationItems(
     return { ok: false, error: mapAdminAccessError(access.status) };
   }
 
-  const rpcLimit = Math.min(input.limit + 1, 100);
   const response = await supabase.rpc("list_admin_reconciliation_items", {
-    p_limit: rpcLimit,
+    p_limit: input.limit,
     p_before_created_at: input.cursor?.createdAt,
     p_before_item_id: input.cursor?.itemId,
     p_asset_id: input.assetId ?? undefined,

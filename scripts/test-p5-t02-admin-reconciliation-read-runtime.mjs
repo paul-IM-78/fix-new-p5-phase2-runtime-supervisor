@@ -162,6 +162,7 @@ async function main() {
       await assertListValidation(adminJar);
       await assertListFilters(adminJar, fixture);
       await assertDetailHappyPath(adminJar, fixture);
+      await assertBindingProvenanceCounts(adminJar, fixture);
       await assertDetailValidation(adminJar, fixture);
       await assertMethodBoundary(adminJar, fixture);
 
@@ -661,14 +662,16 @@ async function createAdminReadFixture({
     itemMissingId: randomUUID(),
     itemToleranceId: randomUUID(),
     itemReviewRequiredId: randomUUID(),
+    itemBindingDirectId: randomUUID(),
     reviewCaseId: randomUUID(),
   };
-  const observations = Array.from({ length: 8 }, () => randomUUID());
+  const observations = Array.from({ length: 9 }, () => randomUUID());
   const eventIds = [randomUUID(), randomUUID()];
-  const createdSame = "2026-07-30T03:00:00Z";
-  const createdMissing = "2026-07-30T02:00:00Z";
-  const createdTolerance = "2026-07-30T01:00:00Z";
-  const createdReviewRequired = "2026-07-30T00:30:00Z";
+  const createdSame = "2026-07-30T03:00:00.123456Z";
+  const createdBindingDirect = "2026-07-30T03:00:00.123400Z";
+  const createdMissing = "2026-07-30T03:00:00.123300Z";
+  const createdTolerance = "2026-07-30T03:00:00.123200Z";
+  const createdReviewRequired = "2026-07-30T03:00:00.123100Z";
   const hugeUnits = "123456789012345678901234567890123456";
   const assetACode = `${codePrefix}A`;
   const assetBCode = `${codePrefix}B`;
@@ -689,6 +692,7 @@ async function createAdminReadFixture({
     [observations[5], ids.bindingBCollectionId, ids.assetBId, "ALT_BALANCE_OBSERVER", "60", "2026-07-30T01:50:00Z"],
     [observations[6], ids.bindingBPayoutId, ids.assetBId, "ALT_BALANCE_OBSERVER", "41", "2026-07-30T01:51:00Z"],
     [observations[7], ids.bindingACollectionId, ids.assetAId, "BALANCE_OBSERVER", "220", "2026-07-30T00:20:00Z"],
+    [observations[8], ids.bindingACollectionId, ids.assetAId, "BALANCE_OBSERVER", "52", "2026-07-30T02:55:00.123456Z"],
   ];
   const runRows = [
     [
@@ -954,6 +958,35 @@ async function createAdminReadFixture({
         )
         .join(",\n      ")};
 
+    insert into private.reconciliation_items (
+      id,
+      reconciliation_run_id,
+      custody_account_binding_id,
+      asset_id,
+      external_balance_observation_id,
+      expected_units,
+      observed_units,
+      difference_units,
+      tolerance_units,
+      classification,
+      created_at,
+      scope_kind
+    )
+    values (
+      ${sqlUuid(ids.itemBindingDirectId)},
+      ${sqlUuid(ids.runCompletedId)},
+      ${sqlUuid(ids.bindingACollectionId)},
+      ${sqlUuid(ids.assetAId)},
+      ${sqlUuid(observations[8])},
+      50,
+      52,
+      2,
+      5,
+      'WITHIN_TOLERANCE',
+      ${sqlTimestamp(createdBindingDirect)},
+      'BINDING'
+    );
+
     insert into private.reconciliation_item_binding_observations (
       reconciliation_item_id,
       custody_account_binding_id,
@@ -1026,6 +1059,7 @@ async function createAdminReadFixture({
     hugeItemId: ids.itemHugeMatchedId,
     zeroItemId: ids.itemZeroMismatchId,
     toleranceItemId: ids.itemToleranceId,
+    bindingItemId: ids.itemBindingDirectId,
     items: [
       {
         id: ids.itemHugeMatchedId,
@@ -1058,6 +1092,22 @@ async function createAdminReadFixture({
         differenceUnits: "-5",
         toleranceUnits: "0",
         counts: [2, 2, 0, 0],
+      },
+      {
+        id: ids.itemBindingDirectId,
+        assetId: ids.assetAId,
+        runId: ids.runCompletedId,
+        itemCreatedAt: createdBindingDirect,
+        runStatus: "COMPLETED",
+        classification: "WITHIN_TOLERANCE",
+        reviewStatus: null,
+        observerKind: "BALANCE_OBSERVER",
+        observationCutoffAt: "2026-07-30T03:00:00Z",
+        expectedUnits: "50",
+        observedUnits: "52",
+        differenceUnits: "2",
+        toleranceUnits: "5",
+        counts: [1, 1, 0, 0],
       },
       {
         id: ids.itemMissingId,
@@ -1115,7 +1165,7 @@ async function createAdminReadFixture({
   console.log("ADMIN_READ_FIXTURE_TAG_RECORDED=true");
   console.log("ADMIN_READ_FIXTURE_ASSET_COUNT=2");
   console.log("ADMIN_READ_FIXTURE_RUN_COUNT=3");
-  console.log("ADMIN_READ_FIXTURE_ITEM_COUNT=5");
+  console.log("ADMIN_READ_FIXTURE_ITEM_COUNT=6");
   console.log("ADMIN_READ_FIXTURE_REVIEW_CASE_COUNT=1");
   console.log("ADMIN_READ_FIXTURE_REVIEW_EVENT_COUNT=2");
   pass("ADMIN_READ_FIXTURE_SETUP");
@@ -1124,7 +1174,7 @@ async function createAdminReadFixture({
 }
 
 function compareListItems(left, right) {
-  const time = Date.parse(right.itemCreatedAt) - Date.parse(left.itemCreatedAt);
+  const time = right.itemCreatedAt.localeCompare(left.itemCreatedAt);
 
   return time || right.id.localeCompare(left.id);
 }
@@ -1182,7 +1232,7 @@ async function assertListHappyPath(jar, fixture) {
   const payload = await getList(jar);
   const items = payload.result.items;
 
-  assert(items.length === 5, "default list fixture count");
+  assert(items.length === 6, "default list fixture count");
   assert(payload.result.nextCursor === null, "default list cursor null");
   assertListOrder(items, fixture.expectedOrder, "default list order");
   assertListItemShape(items);
@@ -1190,6 +1240,7 @@ async function assertListHappyPath(jar, fixture) {
 
   const huge = findListItem(items, fixture.hugeItemId);
   const zero = findListItem(items, fixture.zeroItemId);
+  const binding = findListItem(items, fixture.bindingItemId);
   const missing = findListItem(items, fixture.missingItemId);
 
   assert(huge.expectedUnits === fixture.items[0].expectedUnits, "huge expected units");
@@ -1199,6 +1250,7 @@ async function assertListHappyPath(jar, fixture) {
   assert(missing.differenceUnits === null, "null difference units");
   assertProvenanceCounts(huge, [3, 3, 0, 0], "huge provenance counts");
   assertProvenanceCounts(zero, [2, 2, 0, 0], "zero provenance counts");
+  assertProvenanceCounts(binding, [1, 1, 0, 0], "binding provenance counts");
   assertProvenanceCounts(missing, [2, 0, 1, 1], "missing provenance counts");
 
   console.log("ADMIN_READ_LIST_DEFAULT=PASS");
@@ -1209,36 +1261,38 @@ async function assertListHappyPath(jar, fixture) {
 }
 
 async function assertListPagination(jar, fixture) {
-  const first = await getList(jar, "?limit=2");
+  const pageSize = 2;
+  const pages = [];
+  let cursor = null;
+  let reachedLastPage = false;
 
-  assert(first.result.items.length === 2, "first page length");
-  assert(typeof first.result.nextCursor === "string", "first page cursor");
-  assertCursorShape(first.result.nextCursor, first.result.items.at(-1));
+  for (let index = 0; index < 10; index += 1) {
+    const query = cursor
+      ? `?limit=${pageSize}&cursor=${encodeURIComponent(cursor)}`
+      : `?limit=${pageSize}`;
+    const page = await getList(jar, query);
+    const pageItems = page.result.items;
 
-  const second = await getList(
-    jar,
-    `?limit=2&cursor=${encodeURIComponent(first.result.nextCursor)}`,
-  );
+    assert(pageItems.length > 0, "pagination page nonempty");
+    assert(pageItems.length <= pageSize, "lookahead row not exposed");
+    pages.push(pageItems);
 
-  assert(second.result.items.length === 2, "second page length");
-  assert(typeof second.result.nextCursor === "string", "second page cursor");
+    if (page.result.nextCursor === null) {
+      reachedLastPage = true;
+      break;
+    }
 
-  const third = await getList(
-    jar,
-    `?limit=2&cursor=${encodeURIComponent(second.result.nextCursor)}`,
-  );
+    assert(typeof page.result.nextCursor === "string", "page cursor");
+    assertCursorShape(page.result.nextCursor, pageItems.at(-1));
+    cursor = page.result.nextCursor;
+  }
 
-  assert(third.result.items.length === 1, "third page length");
-  assert(third.result.nextCursor === null, "third page cursor null");
+  const flattened = pages.flat();
+  const combined = flattened.map((item) => item.reconciliationItemId);
 
-  const combined = [
-    ...first.result.items,
-    ...second.result.items,
-    ...third.result.items,
-  ].map((item) => item.reconciliationItemId);
-
+  assert(reachedLastPage, "pagination reached last page");
   assertListOrder(
-    [...first.result.items, ...second.result.items, ...third.result.items],
+    flattened,
     fixture.expectedOrder,
     "pagination combined order",
   );
@@ -1250,6 +1304,7 @@ async function assertListPagination(jar, fixture) {
 
   console.log("ADMIN_READ_LIMIT_LOOKAHEAD=PASS");
   console.log("ADMIN_READ_CURSOR_PAGINATION=PASS");
+  console.log("ADMIN_READ_MICROSECOND_CURSOR=PASS");
   pass("ADMIN_READ_LIST_PAGINATION");
 }
 
@@ -1266,7 +1321,8 @@ function assertCursorShape(cursor, lastItem) {
     "cursor decoded shape",
   );
   assert(decoded.itemId === lastItem.reconciliationItemId, "cursor item id");
-  assert(Date.parse(decoded.createdAt) === Date.parse(lastItem.itemCreatedAt), "cursor created at");
+  assert(decoded.createdAt === lastItem.itemCreatedAt, "cursor created at exact");
+  assert(/\.\d{4,6}(?:Z|[+-]\d{2}:\d{2})$/.test(decoded.createdAt), "cursor microsecond precision");
 }
 
 async function assertListValidation(jar) {
@@ -1462,6 +1518,48 @@ async function assertDetailHappyPath(jar, fixture) {
   pass("ADMIN_READ_DETAIL_HAPPY_PATH");
 }
 
+async function assertBindingProvenanceCounts(jar, fixture) {
+  const list = await getList(jar, `?classification=WITHIN_TOLERANCE`);
+  const listItem = findListItem(list.result.items, fixture.bindingItemId);
+  const detail = await getDetail(jar, fixture.bindingItemId);
+  const detailCounts = countDetailProvenance(detail.result.provenance);
+
+  assertProvenanceCounts(
+    listItem,
+    [
+      detail.result.provenance.length,
+      detailCounts.observed,
+      detailCounts.missing,
+      detailCounts.failed,
+    ],
+    "binding list detail provenance counts",
+  );
+  assert(listItem.targetBindingCount === 1, "binding target count not zero");
+
+  console.log("ADMIN_READ_BINDING_PROVENANCE_COUNTS=PASS");
+  pass("ADMIN_READ_BINDING_PROVENANCE_COUNTS");
+}
+
+function countDetailProvenance(provenance) {
+  const counts = {
+    observed: 0,
+    missing: 0,
+    failed: 0,
+  };
+
+  for (const entry of provenance) {
+    if (entry.membershipStatus === "OBSERVED") {
+      counts.observed += 1;
+    } else if (entry.membershipStatus === "MISSING_OBSERVATION") {
+      counts.missing += 1;
+    } else if (entry.membershipStatus === "OBSERVATION_FAILED") {
+      counts.failed += 1;
+    }
+  }
+
+  return counts;
+}
+
 async function assertDetailValidation(jar, fixture) {
   await assertJsonError(
     await appGet("/api/v1/admin/reconciliation/items/not-a-uuid", { jar }),
@@ -1543,12 +1641,11 @@ function assertListOrder(items, expectedIds, label) {
   for (let index = 1; index < items.length; index += 1) {
     const previous = items[index - 1];
     const current = items[index];
-    const previousTime = Date.parse(previous.itemCreatedAt);
-    const currentTime = Date.parse(current.itemCreatedAt);
+    const timeOrder = previous.itemCreatedAt.localeCompare(current.itemCreatedAt);
 
     assert(
-      previousTime > currentTime ||
-        (previousTime === currentTime &&
+      timeOrder > 0 ||
+        (timeOrder === 0 &&
           previous.reconciliationItemId > current.reconciliationItemId),
       `${label} stable order`,
     );

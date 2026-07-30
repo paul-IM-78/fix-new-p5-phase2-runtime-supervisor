@@ -382,6 +382,16 @@ values
     99999999999999999999999999999999999999,
     '2026-07-30 00:57:00+00'::timestamptz,
     '2026-07-30 00:58:00+00'::timestamptz
+  ),
+  (
+    '00000000-0000-4000-8000-000000710404',
+    '00000000-0000-4000-8000-000000710301',
+    '00000000-0000-4000-8000-000000710101',
+    'BALANCE_OBSERVER',
+    'p5read.balance.0004',
+    52,
+    '2026-07-30 02:25:00+00'::timestamptz,
+    '2026-07-30 02:26:00+00'::timestamptz
   );
 
 insert into private.reconciliation_runs (
@@ -428,6 +438,17 @@ values
     'BALANCE_OBSERVER',
     '2026-07-30 03:00:00+00'::timestamptz,
     '2026-07-30 03:03:00+00'::timestamptz
+  ),
+  (
+    '00000000-0000-4000-8000-000000710504',
+    'p5read.run.binding.0001',
+    'MANUAL',
+    'COMPLETED',
+    '2026-07-30 02:20:00+00'::timestamptz,
+    '2026-07-30 02:21:00+00'::timestamptz,
+    'BALANCE_OBSERVER',
+    '2026-07-30 02:30:00+00'::timestamptz,
+    '2026-07-30 02:31:00+00'::timestamptz
   );
 
 insert into private.reconciliation_items (
@@ -479,6 +500,35 @@ values
     'OBSERVATION_FAILED',
     '2026-07-30 03:10:00+00'::timestamptz
   );
+
+insert into private.reconciliation_items (
+  id,
+  reconciliation_run_id,
+  custody_account_binding_id,
+  asset_id,
+  external_balance_observation_id,
+  scope_kind,
+  expected_units,
+  observed_units,
+  difference_units,
+  tolerance_units,
+  classification,
+  created_at
+)
+values (
+  '00000000-0000-4000-8000-000000710604',
+  '00000000-0000-4000-8000-000000710504',
+  '00000000-0000-4000-8000-000000710301',
+  '00000000-0000-4000-8000-000000710101',
+  '00000000-0000-4000-8000-000000710404',
+  'BINDING',
+  50,
+  52,
+  2,
+  5,
+  'WITHIN_TOLERANCE',
+  '2026-07-30 02:32:00+00'::timestamptz
+);
 
 insert into private.reconciliation_item_binding_observations (
   reconciliation_item_id,
@@ -685,6 +735,62 @@ select extensions.is(
   ),
   '00000000-0000-4000-8000-000000710603,2,0,1,1',
   'provenance counts distinguish target observed missing and failed members'
+);
+
+create temporary table qa_reconciliation_binding_list as
+select *
+from public.list_admin_reconciliation_items(
+  p_limit => 100,
+  p_classification => 'WITHIN_TOLERANCE'
+)
+where reconciliation_item_id = '00000000-0000-4000-8000-000000710604';
+
+create temporary table qa_reconciliation_binding_detail as
+select payload
+from public.get_admin_reconciliation_item_detail(
+  '00000000-0000-4000-8000-000000710604'
+);
+
+select extensions.is(
+  (
+    select target_binding_count::text || ',' ||
+      observed_binding_count::text || ',' ||
+      missing_binding_count::text || ',' ||
+      failed_binding_count::text
+    from qa_reconciliation_binding_list
+  ),
+  '1,1,0,0',
+  'BINDING list read counts direct binding provenance'
+);
+
+select extensions.is(
+  (
+    select target_binding_count::text || ',' ||
+      observed_binding_count::text || ',' ||
+      missing_binding_count::text || ',' ||
+      failed_binding_count::text
+    from qa_reconciliation_binding_list
+  ),
+  (
+    select jsonb_array_length(payload -> 'provenance')::text || ',' ||
+      (
+        select count(*)::text
+        from jsonb_array_elements(payload -> 'provenance') as entry
+        where entry ->> 'membershipStatus' = 'OBSERVED'
+      ) || ',' ||
+      (
+        select count(*)::text
+        from jsonb_array_elements(payload -> 'provenance') as entry
+        where entry ->> 'membershipStatus' = 'MISSING_OBSERVATION'
+      ) || ',' ||
+      (
+        select count(*)::text
+        from jsonb_array_elements(payload -> 'provenance') as entry
+        where entry ->> 'membershipStatus' = 'OBSERVATION_FAILED'
+      )
+    from qa_reconciliation_binding_detail
+  ),
+  'BINDING list provenance counts match detail provenance statuses'
 );
 
 select extensions.is(

@@ -439,7 +439,7 @@ function parseOptionalTimestamp(
 
   const time = Date.parse(normalized);
 
-  return Number.isFinite(time) ? new Date(time).toISOString() : "invalid";
+  return Number.isFinite(time) ? normalized : "invalid";
 }
 
 function readString(value: unknown): string | null {
