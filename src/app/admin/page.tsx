@@ -92,7 +92,8 @@ export default async function AdminPage() {
             product administration is limited to product terms and status.
             Staking position operations are a separate AAL2 area for matured
             principal unlock and one-time reward settlement of existing
-            position obligations.
+            position obligations. Reconciliation item reads are a separate
+            read-only AAL2 surface.
           </p>
           <p className="mt-2 text-sm leading-6 text-zinc-600">
             Product status changes do not mutate existing positions. There is
@@ -156,6 +157,12 @@ export default async function AdminPage() {
             href="/admin/custody"
           >
             Custody config
+          </Link>
+          <Link
+            className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
+            href="/admin/reconciliation"
+          >
+            Reconciliation reads
           </Link>
           <Link
             className="inline-flex h-10 items-center border border-zinc-300 px-4 text-sm font-medium text-zinc-900"
