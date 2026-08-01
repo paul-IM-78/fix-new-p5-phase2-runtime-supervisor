@@ -44,6 +44,11 @@ export type MockBalanceObservationFixture =
   | MockBalanceObservationSuccessFixture
   | MockBalanceObservationErrorFixture;
 
+export type MockBalanceObservationAttemptSequence = {
+  binding: CustodyAccountBindingRef;
+  attempts: readonly MockBalanceObservationFixture[];
+};
+
 export type MockCustodyObservationAdapterConfig = {
   provider: CustodyProviderRef;
   health: {
@@ -51,6 +56,7 @@ export type MockCustodyObservationAdapterConfig = {
     checkedAt: string;
   };
   balances: readonly MockBalanceObservationFixture[];
+  balanceAttemptSequences?: readonly MockBalanceObservationAttemptSequence[];
   transfers?: readonly CustodyTransferObservation[];
   balanceReadDelayMs?: number;
 };
@@ -98,6 +104,11 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
     string,
     MockBalanceObservationFixture
   >();
+  private readonly attemptSequencesByBindingKey = new Map<
+    string,
+    readonly MockBalanceObservationFixture[]
+  >();
+  private readonly attemptIndexByBindingKey = new Map<string, number>();
   private readonly duplicateBindingKeys = new Set<string>();
   private readonly transfers: readonly CustodyTransferObservation[];
   private readonly balanceReadDelayMs: number;
@@ -120,6 +131,26 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
       }
 
       this.fixturesByBindingKey.set(key, fixture);
+    }
+
+    for (const sequence of config.balanceAttemptSequences ?? []) {
+      const key = bindingResultKey(sequence.binding);
+
+      if (sequence.attempts.length < 1) {
+        throw new RangeError("mock_balance_attempt_sequence_empty");
+      }
+
+      if (this.attemptSequencesByBindingKey.has(key)) {
+        this.duplicateBindingKeys.add(key);
+      }
+
+      for (const fixture of sequence.attempts) {
+        if (bindingResultKey(fixture.binding) !== key) {
+          throw new RangeError("mock_balance_attempt_sequence_binding_mismatch");
+        }
+      }
+
+      this.attemptSequencesByBindingKey.set(key, sequence.attempts);
     }
   }
 
@@ -171,7 +202,7 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
       };
     }
 
-    const fixture = this.fixturesByBindingKey.get(key);
+    const fixture = this.readFixtureForAttempt(key);
 
     if (!fixture) {
       return {
@@ -194,6 +225,21 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
     }
 
     return this.successResult(binding, fixture);
+  }
+
+  private readFixtureForAttempt(
+    key: string,
+  ): MockBalanceObservationFixture | undefined {
+    const sequence = this.attemptSequencesByBindingKey.get(key);
+
+    if (!sequence) {
+      return this.fixturesByBindingKey.get(key);
+    }
+
+    const index = this.attemptIndexByBindingKey.get(key) ?? 0;
+    this.attemptIndexByBindingKey.set(key, index + 1);
+
+    return sequence[Math.min(index, sequence.length - 1)];
   }
 
   private successResult(

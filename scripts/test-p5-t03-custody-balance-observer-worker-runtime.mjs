@@ -36,6 +36,10 @@ const SOURCE_MODULES = [
     outputName: "balance-observer-command-client.js",
   },
   {
+    sourcePath: "src/server/custody/balance-observer-retry.ts",
+    outputName: "balance-observer-retry.js",
+  },
+  {
     sourcePath: "src/server/custody/balance-observer-worker.ts",
     outputName: "balance-observer-worker.js",
   },

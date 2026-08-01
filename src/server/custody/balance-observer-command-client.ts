@@ -62,6 +62,7 @@ export type CustodyBalanceObserverCommandErrorCode =
   | "INPUT_CONTRACT_INVALID"
   | "DB_CONNECTION_FAILED"
   | "DB_TIMEOUT"
+  | "DB_LOCK_TIMEOUT"
   | "DB_UNAVAILABLE"
   | "DB_COMMAND_REJECTED"
   | "DB_COMMAND_RESULT_COUNT_INVALID"
@@ -454,24 +455,44 @@ function mapPostgresError(error: unknown): CustodyBalanceObserverCommandError {
     );
   }
 
-  if (code === "57014" || code === "55P03") {
+  if (code === "57014") {
     return new CustodyBalanceObserverCommandError("DB_TIMEOUT", true);
   }
 
-  if (
-    code === "ECONNREFUSED" ||
-    code === "ETIMEDOUT" ||
-    code === "ENOTFOUND" ||
-    code === "EAI_AGAIN"
-  ) {
+  if (code === "55P03") {
+    return new CustodyBalanceObserverCommandError("DB_LOCK_TIMEOUT", true);
+  }
+
+  if (code === "ETIMEDOUT") {
     return new CustodyBalanceObserverCommandError(
       "DB_CONNECTION_FAILED",
       true,
     );
   }
 
-  if (code === "57P01" || code === "57P02" || code === "57P03") {
+  if (
+    code === "ECONNREFUSED" ||
+    code === "ECONNRESET" ||
+    code === "EPIPE" ||
+    code === "ENOTFOUND" ||
+    code === "EAI_AGAIN" ||
+    code?.startsWith("08") ||
+    code === "57P01" ||
+    code === "57P02" ||
+    code === "57P03"
+  ) {
     return new CustodyBalanceObserverCommandError("DB_UNAVAILABLE", true);
+  }
+
+  if (message === "Query read timeout") {
+    return new CustodyBalanceObserverCommandError("DB_TIMEOUT", true);
+  }
+
+  if (message === "Connection terminated due to connection timeout") {
+    return new CustodyBalanceObserverCommandError(
+      "DB_CONNECTION_FAILED",
+      true,
+    );
   }
 
   return new CustodyBalanceObserverCommandError("DB_COMMAND_REJECTED", false);

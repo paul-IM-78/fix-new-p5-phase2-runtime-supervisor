@@ -11,13 +11,24 @@ import {
   CustodyBalanceObserverCommandError,
   type CustodyBalanceObserverCommandClient,
 } from "./balance-observer-command-client";
+import {
+  calculateRetryDelayDecision,
+  normalizeCustodyBalanceObserverRetryPolicy,
+  shouldRetryAttempt,
+  waitForRetryDelay,
+  type CustodyBalanceObserverRetryPolicy,
+  type CustodyBalanceObserverRetryRandomInteger,
+  type CustodyBalanceObserverRetrySleep,
+} from "./balance-observer-retry";
 import type {
   CustodyAccountBindingRef,
-  CustodyBalanceObservationIdentity,
   CustodyBalanceObservationResult,
-  CustodyObservationAdapter,
   CustodyProviderRef,
+  CustodyObservationAdapter,
+  CustodyBalanceObservationIdentity,
 } from "./provider-observation-contract";
+
+export type { CustodyBalanceObserverRetryPolicy } from "./balance-observer-retry";
 
 export type CustodyBalanceObserverIdentityPolicy =
   | "PRODUCTION"
@@ -45,6 +56,8 @@ export type CustodyBalanceObserverBindingOutcome =
       checkpointCreated: boolean;
       checkpointAdvanced: boolean;
       checkpointVersion: string;
+      adapterAttempts: number;
+      databaseAttempts: number;
     }
   | {
       ok: false;
@@ -52,6 +65,12 @@ export type CustodyBalanceObserverBindingOutcome =
       stage: "ADAPTER" | "VALIDATION" | "IDENTITY" | "DATABASE" | "ABORTED";
       code: string;
       retryable: boolean;
+      adapterAttempts: number;
+      databaseAttempts: number;
+      retryExhausted: boolean;
+      retryDeferred: boolean;
+      retryAfterMs: number | null;
+      requiresScopeRefresh: boolean;
     };
 
 export type CustodyBalanceObserverWorkSummary = {
@@ -66,6 +85,15 @@ export type CustodyBalanceObserverWorkSummary = {
   checkpointNoops: number;
   failedBindings: number;
   abortedBindings: number;
+  adapterAttempts: number;
+  adapterRetryAttempts: number;
+  databaseRetryAttempts: number;
+  retryExhaustedBindings: number;
+  retryDeferredBindings: number;
+  scopeRefreshRequiredBindings: number;
+  timeoutFailures: number;
+  lockTimeoutFailures: number;
+  unavailableFailures: number;
 };
 
 export type CustodyBalanceObserverWorkResult = {
@@ -73,10 +101,17 @@ export type CustodyBalanceObserverWorkResult = {
   summary: CustodyBalanceObserverWorkSummary;
 };
 
+export type CustodyBalanceObserverRetryRuntime = {
+  randomInteger?: CustodyBalanceObserverRetryRandomInteger;
+  sleep?: CustodyBalanceObserverRetrySleep;
+};
+
 export type RunCustodyBalanceObserverWorkUnitInput = {
   workUnit: CustodyBalanceObserverWorkUnit;
   adapter: CustodyObservationAdapter;
   commandClient: CustodyBalanceObserverCommandClient;
+  retryPolicy?: CustodyBalanceObserverRetryPolicy;
+  retryRuntime?: CustodyBalanceObserverRetryRuntime;
   signal?: AbortSignal;
 };
 
@@ -91,6 +126,22 @@ type ValidatedWorkUnit = CustodyBalanceObserverWorkUnit & {
   bindings: readonly ValidatedBindingWorkItem[];
 };
 
+type AdapterResolution =
+  | {
+      kind: "SUCCESS";
+      result: Extract<CustodyBalanceObservationResult, { ok: true }>;
+      adapterAttempts: number;
+    }
+  | {
+      kind: "FAILURE";
+      outcome: CustodyBalanceObserverBindingOutcome;
+      adapterFailureCount: number;
+    }
+  | {
+      kind: "ABORTED";
+      adapterAttempts: number;
+    };
+
 const BIGINT_MAX = BigInt("9223372036854775807");
 const CHECKPOINT_VERSION_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
 
@@ -98,14 +149,37 @@ export async function runCustodyBalanceObserverWorkUnit({
   workUnit,
   adapter,
   commandClient,
+  retryPolicy,
+  retryRuntime = {},
   signal,
 }: RunCustodyBalanceObserverWorkUnitInput): Promise<CustodyBalanceObserverWorkResult> {
   const validatedWorkUnit = validateWorkUnit(workUnit);
+  let safeRetryPolicy: CustodyBalanceObserverRetryPolicy;
+
+  try {
+    safeRetryPolicy = normalizeCustodyBalanceObserverRetryPolicy(retryPolicy);
+  } catch {
+    return createResult(
+      validatedWorkUnit.bindings.map((item) =>
+        failureOutcome({
+          bindingId: item.bindingId,
+          stage: "VALIDATION",
+          code: "RETRY_POLICY_INVALID",
+          retryable: false,
+          adapterAttempts: 0,
+          databaseAttempts: 0,
+        }),
+      ),
+      0,
+      0,
+    );
+  }
 
   if (signal?.aborted) {
     return createResult(
-      validatedWorkUnit.bindings.map((item) => abortedOutcome(item.bindingId)),
-      0,
+      validatedWorkUnit.bindings.map((item) =>
+        abortedOutcome(item.bindingId, 0, 0),
+      ),
       0,
       0,
     );
@@ -119,10 +193,13 @@ export async function runCustodyBalanceObserverWorkUnit({
       { signal },
     );
   } catch {
+    const adapterAttempts = 1;
+
     if (signal?.aborted) {
       return createResult(
-        validatedWorkUnit.bindings.map((item) => abortedOutcome(item.bindingId)),
-        0,
+        validatedWorkUnit.bindings.map((item) =>
+          abortedOutcome(item.bindingId, adapterAttempts, 0),
+        ),
         0,
         0,
       );
@@ -130,23 +207,29 @@ export async function runCustodyBalanceObserverWorkUnit({
 
     return createResult(
       validatedWorkUnit.bindings.map((item) =>
-        failureOutcome(item.bindingId, "ADAPTER", "ADAPTER_UNEXPECTED_RESULT", false),
+        failureOutcome({
+          bindingId: item.bindingId,
+          stage: "ADAPTER",
+          code: "ADAPTER_CALL_FAILED",
+          retryable: false,
+          adapterAttempts,
+          databaseAttempts: 0,
+        }),
       ),
       0,
-      0,
-      0,
+      validatedWorkUnit.bindings.length,
     );
   }
 
-  const adapterSuccesses = countAdapterSuccesses(adapterResults);
-  const adapterFailures = adapterResults.length - adapterSuccesses;
-
   if (signal?.aborted) {
+    const adapterSuccesses = countAdapterSuccesses(adapterResults);
+
     return createResult(
-      validatedWorkUnit.bindings.map((item) => abortedOutcome(item.bindingId)),
+      validatedWorkUnit.bindings.map((item) =>
+        abortedOutcome(item.bindingId, 1, 0),
+      ),
       adapterSuccesses,
-      adapterFailures,
-      0,
+      adapterResults.length - adapterSuccesses,
     );
   }
 
@@ -156,18 +239,27 @@ export async function runCustodyBalanceObserverWorkUnit({
   );
 
   if (adapterValidationError) {
+    const adapterSuccesses = countAdapterSuccesses(adapterResults);
+
     return createResult(
       validatedWorkUnit.bindings.map((item) =>
-        failureOutcome(item.bindingId, "VALIDATION", adapterValidationError, false),
+        failureOutcome({
+          bindingId: item.bindingId,
+          stage: "VALIDATION",
+          code: adapterValidationError,
+          retryable: false,
+          adapterAttempts: 1,
+          databaseAttempts: 0,
+        }),
       ),
       adapterSuccesses,
-      adapterFailures,
-      0,
+      adapterResults.length - adapterSuccesses,
     );
   }
 
   const outcomes: CustodyBalanceObserverBindingOutcome[] = [];
-  let databaseAttempts = 0;
+  let adapterSuccesses = 0;
+  let adapterFailures = 0;
 
   for (let index = 0; index < validatedWorkUnit.bindings.length; index += 1) {
     const item = validatedWorkUnit.bindings[index];
@@ -177,124 +269,454 @@ export async function runCustodyBalanceObserverWorkUnit({
     }
 
     if (signal?.aborted) {
-      pushAbortedOutcomes(outcomes, validatedWorkUnit.bindings, index);
+      pushAbortedOutcomes(outcomes, validatedWorkUnit.bindings, index, 0, 0);
       break;
     }
 
     const adapterResult = adapterResults[index];
 
     if (!adapterResult) {
+      adapterFailures += 1;
       outcomes.push(
-        failureOutcome(item.bindingId, "VALIDATION", "ADAPTER_MISSING_RESULT", false),
+        failureOutcome({
+          bindingId: item.bindingId,
+          stage: "VALIDATION",
+          code: "ADAPTER_MISSING_RESULT",
+          retryable: false,
+          adapterAttempts: 1,
+          databaseAttempts: 0,
+        }),
       );
       continue;
     }
 
-    if (!adapterResult.ok) {
-      outcomes.push(
-        failureOutcome(
-          item.bindingId,
-          "ADAPTER",
-          adapterResult.error.code,
-          adapterResult.error.retryable,
-        ),
+    const adapterResolution = await resolveAdapterResultForBinding({
+      workUnit: validatedWorkUnit,
+      item,
+      adapter,
+      initialResult: adapterResult,
+      retryPolicy: safeRetryPolicy,
+      retryRuntime,
+      signal,
+    });
+
+    if (adapterResolution.kind === "ABORTED") {
+      pushAbortedOutcomes(
+        outcomes,
+        validatedWorkUnit.bindings,
+        index,
+        adapterResolution.adapterAttempts,
+        0,
       );
+      break;
+    }
+
+    if (adapterResolution.kind === "FAILURE") {
+      adapterFailures += adapterResolution.adapterFailureCount;
+      outcomes.push(adapterResolution.outcome);
       continue;
     }
+
+    adapterSuccesses += 1;
 
     if (
       !isIdentityAllowedByPolicy(
         validatedWorkUnit.identityPolicy,
-        adapterResult.observation.identity.kind,
+        adapterResolution.result.observation.identity.kind,
       )
     ) {
       outcomes.push(
-        failureOutcome(
-          item.bindingId,
-          "IDENTITY",
-          "CONTENT_IDENTITY_NOT_ALLOWED",
-          false,
-        ),
+        failureOutcome({
+          bindingId: item.bindingId,
+          stage: "IDENTITY",
+          code: "CONTENT_IDENTITY_NOT_ALLOWED",
+          retryable: false,
+          adapterAttempts: adapterResolution.adapterAttempts,
+          databaseAttempts: 0,
+        }),
       );
       continue;
     }
 
-    let observedTotalUnits: string;
-    let observedAt: string;
-    let observationKey: string;
+    const normalized = normalizeSuccessfulObservation(
+      validatedWorkUnit,
+      item,
+      adapterResolution.result,
+      adapterResolution.adapterAttempts,
+    );
 
-    try {
-      observedTotalUnits = normalizeAtomicUnits(
-        adapterResult.observation.observedTotalUnits,
-      );
-      observedAt = normalizeUtcMicrosecondTimestamp(
-        adapterResult.observation.observedAt,
-      );
-      observationKey = createBalanceObservationKeyV1({
-        providerCode: validatedWorkUnit.provider.providerCode,
-        bindingId: item.bindingId,
-        assetId: item.assetId,
-        observerKind: CUSTODY_BALANCE_OBSERVER_KIND_V1,
-        identity: adapterResult.observation.identity,
-        observedTotalUnits,
-        observedAt,
-      });
-    } catch {
-      outcomes.push(
-        failureOutcome(item.bindingId, "VALIDATION", "INPUT_CONTRACT_INVALID", false),
-      );
+    if (!normalized.ok) {
+      outcomes.push(normalized.outcome);
       continue;
     }
 
     if (signal?.aborted) {
-      pushAbortedOutcomes(outcomes, validatedWorkUnit.bindings, index);
+      pushAbortedOutcomes(
+        outcomes,
+        validatedWorkUnit.bindings,
+        index,
+        adapterResolution.adapterAttempts,
+        0,
+      );
       break;
+    }
+
+    const dbResolution = await recordWithDatabaseRetry({
+      item,
+      commandClient,
+      commandInput: normalized.commandInput,
+      adapterAttempts: adapterResolution.adapterAttempts,
+      retryPolicy: safeRetryPolicy,
+      retryRuntime,
+      signal,
+    });
+
+    if (!dbResolution.ok && dbResolution.stage === "ABORTED") {
+      pushAbortedOutcomes(
+        outcomes,
+        validatedWorkUnit.bindings,
+        index,
+        adapterResolution.adapterAttempts,
+        dbResolution.databaseAttempts,
+      );
+      break;
+    }
+
+    outcomes.push(dbResolution);
+
+    if (signal?.aborted) {
+      pushAbortedOutcomes(
+        outcomes,
+        validatedWorkUnit.bindings,
+        index + 1,
+        0,
+        0,
+      );
+      break;
+    }
+  }
+
+  return createResult(outcomes, adapterSuccesses, adapterFailures);
+}
+
+async function resolveAdapterResultForBinding({
+  workUnit,
+  item,
+  adapter,
+  initialResult,
+  retryPolicy,
+  retryRuntime,
+  signal,
+}: {
+  workUnit: ValidatedWorkUnit;
+  item: ValidatedBindingWorkItem;
+  adapter: CustodyObservationAdapter;
+  initialResult: CustodyBalanceObservationResult;
+  retryPolicy: CustodyBalanceObserverRetryPolicy;
+  retryRuntime: CustodyBalanceObserverRetryRuntime;
+  signal?: AbortSignal;
+}): Promise<AdapterResolution> {
+  let adapterAttempts = 1;
+  let currentResult = initialResult;
+
+  while (true) {
+    if (currentResult.ok) {
+      return {
+        kind: "SUCCESS",
+        result: currentResult,
+        adapterAttempts,
+      };
+    }
+
+    const retryable = isRetryableAdapterError(currentResult.error.code);
+
+    if (!retryable || !shouldRetryAttempt(retryPolicy, adapterAttempts)) {
+      return {
+        kind: "FAILURE",
+        adapterFailureCount: 1,
+        outcome: failureOutcome({
+          bindingId: item.bindingId,
+          stage: "ADAPTER",
+          code: currentResult.error.code,
+          retryable,
+          adapterAttempts,
+          databaseAttempts: 0,
+          retryExhausted:
+            retryable &&
+            retryPolicy.mode === "BOUNDED_V1" &&
+            adapterAttempts >= retryPolicy.maxAttempts,
+        }),
+      };
+    }
+
+    const delayDecision = calculateRetryDelayDecision({
+      policy: retryPolicy,
+      retryIndex: adapterAttempts,
+      retryAfterMs: retryAfterForAdapterError(currentResult.error),
+      randomInteger: retryRuntime.randomInteger,
+    });
+
+    if (delayDecision.retryDeferred) {
+      return {
+        kind: "FAILURE",
+        adapterFailureCount: 1,
+        outcome: failureOutcome({
+          bindingId: item.bindingId,
+          stage: "ADAPTER",
+          code: currentResult.error.code,
+          retryable,
+          adapterAttempts,
+          databaseAttempts: 0,
+          retryDeferred: true,
+          retryAfterMs: delayDecision.retryAfterMs,
+        }),
+      };
+    }
+
+    const waitResult = await waitForRetryDelay({
+      delayMs: delayDecision.delayMs,
+      signal,
+      sleep: retryRuntime.sleep,
+    });
+
+    if (waitResult === "ABORTED") {
+      return {
+        kind: "ABORTED",
+        adapterAttempts,
+      };
+    }
+
+    adapterAttempts += 1;
+
+    try {
+      const retryResults = await adapter.readBalances([item.binding], {
+        signal,
+      });
+      const singleResult = validateSingleAdapterRetryResult(
+        workUnit,
+        item,
+        retryResults,
+      );
+
+      if (!singleResult) {
+        return {
+          kind: "FAILURE",
+          adapterFailureCount: 1,
+          outcome: failureOutcome({
+            bindingId: item.bindingId,
+            stage: "VALIDATION",
+            code: "ADAPTER_RETRY_RESULT_INVALID",
+            retryable: false,
+            adapterAttempts,
+            databaseAttempts: 0,
+          }),
+        };
+      }
+
+      currentResult = singleResult;
+    } catch {
+      if (signal?.aborted) {
+        return {
+          kind: "ABORTED",
+          adapterAttempts,
+        };
+      }
+
+      return {
+        kind: "FAILURE",
+        adapterFailureCount: 1,
+        outcome: failureOutcome({
+          bindingId: item.bindingId,
+          stage: "ADAPTER",
+          code: "ADAPTER_CALL_FAILED",
+          retryable: false,
+          adapterAttempts,
+          databaseAttempts: 0,
+        }),
+      };
+    }
+  }
+}
+
+function validateSingleAdapterRetryResult(
+  workUnit: ValidatedWorkUnit,
+  item: ValidatedBindingWorkItem,
+  results: readonly CustodyBalanceObservationResult[],
+): CustodyBalanceObservationResult | null {
+  if (results.length !== 1) {
+    return null;
+  }
+
+  const result = results[0];
+
+  if (!result || bindingResultKey(result.binding) !== bindingResultKey(item.binding)) {
+    return null;
+  }
+
+  if (!result.ok) {
+    return result;
+  }
+
+  if (bindingResultKey(result.observation.binding) !== bindingResultKey(item.binding)) {
+    return null;
+  }
+
+  if (!providerRefsEqual(workUnit.provider, result.observation.provider)) {
+    return null;
+  }
+
+  return result;
+}
+
+function normalizeSuccessfulObservation(
+  workUnit: ValidatedWorkUnit,
+  item: ValidatedBindingWorkItem,
+  adapterResult: Extract<CustodyBalanceObservationResult, { ok: true }>,
+  adapterAttempts: number,
+):
+  | {
+      ok: true;
+      commandInput: {
+        bindingId: string;
+        observerKind: string;
+        observationKey: string;
+        observedTotalUnits: string;
+        observedAt: string;
+        expectedCheckpointVersion: string;
+      };
+    }
+  | {
+      ok: false;
+      outcome: CustodyBalanceObserverBindingOutcome;
+    } {
+  try {
+    const observedTotalUnits = normalizeAtomicUnits(
+      adapterResult.observation.observedTotalUnits,
+    );
+    const observedAt = normalizeUtcMicrosecondTimestamp(
+      adapterResult.observation.observedAt,
+    );
+    const observationKey = createBalanceObservationKeyV1({
+      providerCode: workUnit.provider.providerCode,
+      bindingId: item.bindingId,
+      assetId: item.assetId,
+      observerKind: CUSTODY_BALANCE_OBSERVER_KIND_V1,
+      identity: adapterResult.observation.identity,
+      observedTotalUnits,
+      observedAt,
+    });
+
+    return {
+      ok: true,
+      commandInput: {
+        bindingId: item.bindingId,
+        observerKind: CUSTODY_BALANCE_OBSERVER_KIND_V1,
+        observationKey,
+        observedTotalUnits,
+        observedAt,
+        expectedCheckpointVersion: item.expectedCheckpointVersion,
+      },
+    };
+  } catch {
+    return {
+      ok: false,
+      outcome: failureOutcome({
+        bindingId: item.bindingId,
+        stage: "VALIDATION",
+        code: "INPUT_CONTRACT_INVALID",
+        retryable: false,
+        adapterAttempts,
+        databaseAttempts: 0,
+      }),
+    };
+  }
+}
+
+async function recordWithDatabaseRetry({
+  item,
+  commandClient,
+  commandInput,
+  adapterAttempts,
+  retryPolicy,
+  retryRuntime,
+  signal,
+}: {
+  item: ValidatedBindingWorkItem;
+  commandClient: CustodyBalanceObserverCommandClient;
+  commandInput: Parameters<
+    CustodyBalanceObserverCommandClient["recordBalanceObservationAndAdvanceCheckpoint"]
+  >[0];
+  adapterAttempts: number;
+  retryPolicy: CustodyBalanceObserverRetryPolicy;
+  retryRuntime: CustodyBalanceObserverRetryRuntime;
+  signal?: AbortSignal;
+}): Promise<CustodyBalanceObserverBindingOutcome> {
+  let databaseAttempts = 0;
+
+  while (true) {
+    if (signal?.aborted) {
+      return abortedOutcome(item.bindingId, adapterAttempts, databaseAttempts);
     }
 
     databaseAttempts += 1;
 
     try {
       const commandResult =
-        await commandClient.recordBalanceObservationAndAdvanceCheckpoint({
-          bindingId: item.bindingId,
-          observerKind: CUSTODY_BALANCE_OBSERVER_KIND_V1,
-          observationKey,
-          observedTotalUnits,
-          observedAt,
-          expectedCheckpointVersion: item.expectedCheckpointVersion,
-        });
+        await commandClient.recordBalanceObservationAndAdvanceCheckpoint(
+          commandInput,
+        );
 
-      outcomes.push({
+      return {
         ok: true,
         bindingId: item.bindingId,
         observationCreated: commandResult.observationCreated,
         checkpointCreated: commandResult.checkpointCreated,
         checkpointAdvanced: commandResult.checkpointAdvanced,
         checkpointVersion: commandResult.checkpointVersion,
-      });
-
-      if (signal?.aborted) {
-        pushAbortedOutcomes(outcomes, validatedWorkUnit.bindings, index + 1);
-        break;
-      }
+        adapterAttempts,
+        databaseAttempts,
+      };
     } catch (error) {
       const mapped =
         error instanceof CustodyBalanceObserverCommandError
           ? error
           : new CustodyBalanceObserverCommandError("DB_COMMAND_REJECTED", false);
+      const retryable = isRetryableDatabaseError(mapped.code);
 
-      outcomes.push(
-        failureOutcome(item.bindingId, "DATABASE", mapped.code, mapped.retryable),
-      );
+      if (!retryable || !shouldRetryAttempt(retryPolicy, databaseAttempts)) {
+        return failureOutcome({
+          bindingId: item.bindingId,
+          stage: "DATABASE",
+          code: mapped.code,
+          retryable,
+          adapterAttempts,
+          databaseAttempts,
+          retryExhausted:
+            retryable &&
+            retryPolicy.mode === "BOUNDED_V1" &&
+            databaseAttempts >= retryPolicy.maxAttempts,
+          requiresScopeRefresh: mapped.code === "CHECKPOINT_VERSION_CONFLICT",
+        });
+      }
+
+      const delayDecision = calculateRetryDelayDecision({
+        policy: retryPolicy,
+        retryIndex: databaseAttempts,
+        retryAfterMs: null,
+        randomInteger: retryRuntime.randomInteger,
+      });
+
+      const waitResult = await waitForRetryDelay({
+        delayMs: delayDecision.delayMs,
+        signal,
+        sleep: retryRuntime.sleep,
+      });
+
+      if (waitResult === "ABORTED") {
+        return abortedOutcome(item.bindingId, adapterAttempts, databaseAttempts);
+      }
     }
   }
-
-  return createResult(
-    outcomes,
-    adapterSuccesses,
-    adapterFailures,
-    databaseAttempts,
-  );
 }
 
 function validateWorkUnit(
@@ -466,28 +888,89 @@ function countAdapterSuccesses(
   return results.filter((result) => result.ok).length;
 }
 
-function failureOutcome(
-  bindingId: string,
-  stage: "ADAPTER" | "VALIDATION" | "IDENTITY" | "DATABASE",
-  code: string,
-  retryable: boolean,
-): CustodyBalanceObserverBindingOutcome {
+function isRetryableAdapterError(code: string): boolean {
+  return (
+    code === "TIMEOUT" ||
+    code === "RATE_LIMITED" ||
+    code === "PROVIDER_UNAVAILABLE"
+  );
+}
+
+function retryAfterForAdapterError(error: {
+  code: string;
+  retryAfterMs: number | null;
+}): number | null {
+  if (error.code === "RATE_LIMITED" || error.code === "PROVIDER_UNAVAILABLE") {
+    return error.retryAfterMs;
+  }
+
+  return null;
+}
+
+function isRetryableDatabaseError(code: string): boolean {
+  return (
+    code === "DB_CONNECTION_FAILED" ||
+    code === "DB_TIMEOUT" ||
+    code === "DB_LOCK_TIMEOUT" ||
+    code === "DB_UNAVAILABLE"
+  );
+}
+
+function failureOutcome({
+  bindingId,
+  stage,
+  code,
+  retryable,
+  adapterAttempts,
+  databaseAttempts,
+  retryExhausted = false,
+  retryDeferred = false,
+  retryAfterMs = null,
+  requiresScopeRefresh = false,
+}: {
+  bindingId: string;
+  stage: "ADAPTER" | "VALIDATION" | "IDENTITY" | "DATABASE";
+  code: string;
+  retryable: boolean;
+  adapterAttempts: number;
+  databaseAttempts: number;
+  retryExhausted?: boolean;
+  retryDeferred?: boolean;
+  retryAfterMs?: number | null;
+  requiresScopeRefresh?: boolean;
+}): CustodyBalanceObserverBindingOutcome {
   return {
     ok: false,
     bindingId,
     stage,
     code,
     retryable,
+    adapterAttempts,
+    databaseAttempts,
+    retryExhausted,
+    retryDeferred,
+    retryAfterMs,
+    requiresScopeRefresh,
   };
 }
 
-function abortedOutcome(bindingId: string): CustodyBalanceObserverBindingOutcome {
+function abortedOutcome(
+  bindingId: string,
+  adapterAttempts: number,
+  databaseAttempts: number,
+): CustodyBalanceObserverBindingOutcome {
   return {
     ok: false,
     bindingId,
     stage: "ABORTED",
     code: "ABORTED",
     retryable: true,
+    adapterAttempts,
+    databaseAttempts,
+    retryExhausted: false,
+    retryDeferred: false,
+    retryAfterMs: null,
+    requiresScopeRefresh: false,
   };
 }
 
@@ -495,12 +978,20 @@ function pushAbortedOutcomes(
   outcomes: CustodyBalanceObserverBindingOutcome[],
   bindings: readonly ValidatedBindingWorkItem[],
   startIndex: number,
+  firstAdapterAttempts: number,
+  firstDatabaseAttempts: number,
 ): void {
   for (let index = startIndex; index < bindings.length; index += 1) {
     const item = bindings[index];
 
     if (item) {
-      outcomes.push(abortedOutcome(item.bindingId));
+      outcomes.push(
+        abortedOutcome(
+          item.bindingId,
+          index === startIndex ? firstAdapterAttempts : 0,
+          index === startIndex ? firstDatabaseAttempts : 0,
+        ),
+      );
     }
   }
 }
@@ -509,9 +1000,8 @@ function createResult(
   outcomes: readonly CustodyBalanceObserverBindingOutcome[],
   adapterSuccesses: number,
   adapterFailures: number,
-  databaseAttempts: number,
 ): CustodyBalanceObserverWorkResult {
-  const summary = summarize(outcomes, adapterSuccesses, adapterFailures, databaseAttempts);
+  const summary = summarize(outcomes, adapterSuccesses, adapterFailures);
 
   assertSummary(outcomes, summary);
 
@@ -525,10 +1015,17 @@ function summarize(
   outcomes: readonly CustodyBalanceObserverBindingOutcome[],
   adapterSuccesses: number,
   adapterFailures: number,
-  databaseAttempts: number,
 ): CustodyBalanceObserverWorkSummary {
   const successes = outcomes.filter((outcome) => outcome.ok);
   const failures = outcomes.filter((outcome) => !outcome.ok);
+  const adapterAttempts = outcomes.reduce(
+    (sum, outcome) => sum + outcome.adapterAttempts,
+    0,
+  );
+  const databaseAttempts = outcomes.reduce(
+    (sum, outcome) => sum + outcome.databaseAttempts,
+    0,
+  );
 
   return {
     requestedBindings: outcomes.length,
@@ -557,6 +1054,37 @@ function summarize(
     abortedBindings: failures.filter(
       (outcome) => !outcome.ok && outcome.stage === "ABORTED",
     ).length,
+    adapterAttempts,
+    adapterRetryAttempts: outcomes.reduce(
+      (sum, outcome) => sum + Math.max(0, outcome.adapterAttempts - 1),
+      0,
+    ),
+    databaseRetryAttempts: outcomes.reduce(
+      (sum, outcome) => sum + Math.max(0, outcome.databaseAttempts - 1),
+      0,
+    ),
+    retryExhaustedBindings: failures.filter(
+      (outcome) => !outcome.ok && outcome.retryExhausted,
+    ).length,
+    retryDeferredBindings: failures.filter(
+      (outcome) => !outcome.ok && outcome.retryDeferred,
+    ).length,
+    scopeRefreshRequiredBindings: failures.filter(
+      (outcome) => !outcome.ok && outcome.requiresScopeRefresh,
+    ).length,
+    timeoutFailures: failures.filter(
+      (outcome) => !outcome.ok && (outcome.code === "TIMEOUT" || outcome.code === "DB_TIMEOUT"),
+    ).length,
+    lockTimeoutFailures: failures.filter(
+      (outcome) => !outcome.ok && outcome.code === "DB_LOCK_TIMEOUT",
+    ).length,
+    unavailableFailures: failures.filter(
+      (outcome) =>
+        !outcome.ok &&
+        (outcome.code === "PROVIDER_UNAVAILABLE" ||
+          outcome.code === "DB_UNAVAILABLE" ||
+          outcome.code === "DB_CONNECTION_FAILED"),
+    ).length,
   };
 }
 
@@ -566,14 +1094,19 @@ function assertSummary(
 ): void {
   const successCount = outcomes.filter((outcome) => outcome.ok).length;
   const failureCount = outcomes.length - successCount;
+  const bindingsWithDbAttempts = outcomes.filter(
+    (outcome) => outcome.databaseAttempts > 0,
+  ).length;
 
   if (
     summary.requestedBindings !== outcomes.length ||
     summary.requestedBindings !== successCount + failureCount ||
-    summary.databaseAttempts > summary.adapterSuccesses ||
+    bindingsWithDbAttempts > summary.adapterSuccesses ||
     summary.persistedObservations + summary.replayedObservations !==
       successCount ||
-    summary.failedBindings + summary.abortedBindings !== failureCount
+    summary.failedBindings + summary.abortedBindings !== failureCount ||
+    summary.adapterRetryAttempts < 0 ||
+    summary.databaseRetryAttempts < 0
   ) {
     throw new RangeError("balance_observer_summary_invariant_invalid");
   }
