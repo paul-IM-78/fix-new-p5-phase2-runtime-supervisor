@@ -291,6 +291,17 @@ async function assertRetryHelper(retry) {
   await assertRetryPolicyInvalid(retry, { mode: "BOUNDED_V1", maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 0 });
   await assertRetryPolicyInvalid(retry, { mode: "BOUNDED_V1", maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 2, jitterRatio: Number.NaN });
   pass("Retry policy invalid rejection");
+
+  const raceSignal = createAbortRegistrationRaceSignal();
+  const raceResult = await retry.waitForRetryDelay({
+    delayMs: 1,
+    signal: raceSignal.signal,
+  });
+
+  assert(raceResult === "ABORTED", "Retry delay race aborted");
+  pass("Retry delay registration race");
+  assert(raceSignal.listenerCount === 0, "Retry delay listener cleanup");
+  pass("Retry delay race cleanup");
 }
 
 async function assertRetryPolicyInvalid(retry, policy) {
@@ -1340,6 +1351,40 @@ function deterministicRetryRuntime(options = {}) {
 
         return signal?.aborted ? "ABORTED" : "COMPLETED";
       },
+    },
+  };
+}
+
+function createAbortRegistrationRaceSignal() {
+  let aborted = false;
+  let listenerCount = 0;
+  let listener = null;
+
+  return {
+    signal: {
+      get aborted() {
+        return aborted;
+      },
+      addEventListener(type, callback) {
+        if (type !== "abort") {
+          return;
+        }
+
+        listener = callback;
+        listenerCount += 1;
+        aborted = true;
+      },
+      removeEventListener(type, callback) {
+        if (type !== "abort" || listener !== callback) {
+          return;
+        }
+
+        listener = null;
+        listenerCount -= 1;
+      },
+    },
+    get listenerCount() {
+      return listenerCount;
     },
   };
 }

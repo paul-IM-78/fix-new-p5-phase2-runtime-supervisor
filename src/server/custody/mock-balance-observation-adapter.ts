@@ -347,23 +347,45 @@ function waitForDelay(
   throwIfAborted(signal);
 
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
+    const cleanupState: {
+      abort?: () => void;
+      timeout?: ReturnType<typeof setTimeout>;
+    } = {};
+    let settled = false;
+
+    const complete = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      if (cleanupState.timeout !== undefined) {
+        clearTimeout(cleanupState.timeout);
+      }
+      if (cleanupState.abort) {
+        signal?.removeEventListener("abort", cleanupState.abort);
+      }
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
       resolve();
-    }, delayMs);
-
-    const abort = () => {
-      cleanup();
-      reject(new Error("custody_balance_observation_read_aborted"));
     };
 
-    const cleanup = () => {
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
-    };
+    cleanupState.abort = () =>
+      complete(new Error("custody_balance_observation_read_aborted"));
 
-    signal?.addEventListener("abort", abort, {
+    signal?.addEventListener("abort", cleanupState.abort, {
       once: true,
     });
+
+    if (settled || signal?.aborted) {
+      cleanupState.abort();
+      return;
+    }
+
+    cleanupState.timeout = setTimeout(() => complete(), delayMs);
   });
 }

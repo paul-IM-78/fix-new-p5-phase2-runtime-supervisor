@@ -181,6 +181,10 @@ export async function waitForRetryDelay({
   }
 
   return new Promise((resolve) => {
+    const cleanupState: {
+      abort?: () => void;
+      timeout?: ReturnType<typeof setTimeout>;
+    } = {};
     let settled = false;
     const complete = (result: "COMPLETED" | "ABORTED") => {
       if (settled) {
@@ -188,16 +192,26 @@ export async function waitForRetryDelay({
       }
 
       settled = true;
-      clearTimeout(timeout);
-      signal?.removeEventListener("abort", abort);
+      if (cleanupState.timeout !== undefined) {
+        clearTimeout(cleanupState.timeout);
+      }
+      if (cleanupState.abort) {
+        signal?.removeEventListener("abort", cleanupState.abort);
+      }
       resolve(result);
     };
-    const abort = () => complete("ABORTED");
-    const timeout = setTimeout(() => complete("COMPLETED"), safeDelayMs);
+    cleanupState.abort = () => complete("ABORTED");
 
-    signal?.addEventListener("abort", abort, {
+    signal?.addEventListener("abort", cleanupState.abort, {
       once: true,
     });
+
+    if (settled || signal?.aborted) {
+      cleanupState.abort();
+      return;
+    }
+
+    cleanupState.timeout = setTimeout(() => complete("COMPLETED"), safeDelayMs);
   });
 }
 

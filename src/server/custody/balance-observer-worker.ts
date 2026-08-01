@@ -5,6 +5,7 @@ import {
   createBalanceObservationKeyV1,
   normalizeAtomicUnits,
   normalizeCanonicalUuid,
+  normalizeObservationIdentityValue,
   normalizeUtcMicrosecondTimestamp,
 } from "./balance-observation-normalization";
 import {
@@ -144,6 +145,18 @@ type AdapterResolution =
 
 const BIGINT_MAX = BigInt("9223372036854775807");
 const CHECKPOINT_VERSION_PATTERN = /^(0|[1-9][0-9]{0,18})$/;
+const MAX_ADAPTER_RETRY_AFTER_MS = 300_000;
+const ADAPTER_ERROR_CODES = new Set([
+  "TIMEOUT",
+  "RATE_LIMITED",
+  "PROVIDER_UNAVAILABLE",
+  "UNSUPPORTED_ASSET",
+  "MALFORMED_AMOUNT",
+  "MALFORMED_TIMESTAMP",
+  "MISSING_RESULT",
+  "DUPLICATE_RESULT",
+  "UNEXPECTED_RESULT",
+]);
 
 export async function runCustodyBalanceObserverWorkUnit({
   workUnit,
@@ -185,13 +198,20 @@ export async function runCustodyBalanceObserverWorkUnit({
     );
   }
 
-  let adapterResults: readonly CustodyBalanceObservationResult[];
+  let adapterResults: readonly unknown[];
+  let adapterResultsShapeError: string | null = null;
 
   try {
-    adapterResults = await adapter.readBalances(
+    const rawAdapterResults = await adapter.readBalances(
       validatedWorkUnit.bindings.map((item) => item.binding),
       { signal },
     );
+    if (!Array.isArray(rawAdapterResults)) {
+      adapterResults = [];
+      adapterResultsShapeError = "ADAPTER_RESULT_INVALID";
+    } else {
+      adapterResults = rawAdapterResults;
+    }
   } catch {
     const adapterAttempts = 1;
 
@@ -233,7 +253,7 @@ export async function runCustodyBalanceObserverWorkUnit({
     );
   }
 
-  const adapterValidationError = validateAdapterResults(
+  const adapterValidationError = adapterResultsShapeError ?? validateAdapterResults(
     validatedWorkUnit,
     adapterResults,
   );
@@ -275,7 +295,7 @@ export async function runCustodyBalanceObserverWorkUnit({
 
     const adapterResult = adapterResults[index];
 
-    if (!adapterResult) {
+    if (adapterResult === undefined) {
       adapterFailures += 1;
       outcomes.push(
         failureOutcome({
@@ -411,24 +431,51 @@ async function resolveAdapterResultForBinding({
   workUnit: ValidatedWorkUnit;
   item: ValidatedBindingWorkItem;
   adapter: CustodyObservationAdapter;
-  initialResult: CustodyBalanceObservationResult;
+  initialResult: unknown;
   retryPolicy: CustodyBalanceObserverRetryPolicy;
   retryRuntime: CustodyBalanceObserverRetryRuntime;
   signal?: AbortSignal;
 }): Promise<AdapterResolution> {
   let adapterAttempts = 1;
   let currentResult = initialResult;
+  let resultContext: "INITIAL" | "RETRY" = "INITIAL";
 
   while (true) {
-    if (currentResult.ok) {
+    const runtimeValidation = validateAdapterResultForBinding(
+      workUnit,
+      item,
+      currentResult,
+      resultContext,
+    );
+
+    if (!runtimeValidation.ok) {
+      return {
+        kind: "FAILURE",
+        adapterFailureCount: 1,
+        outcome: failureOutcome({
+          bindingId: item.bindingId,
+          stage: runtimeValidation.stage,
+          code: runtimeValidation.code,
+          retryable: false,
+          adapterAttempts,
+          databaseAttempts: 0,
+        }),
+      };
+    }
+
+    const validatedResult = runtimeValidation.result;
+
+    if (validatedResult.ok) {
       return {
         kind: "SUCCESS",
-        result: currentResult,
+        result: validatedResult,
         adapterAttempts,
       };
     }
 
-    const retryable = isRetryableAdapterError(currentResult.error.code);
+    const retryable =
+      isRetryableAdapterError(validatedResult.error.code) &&
+      validatedResult.error.retryable === true;
 
     if (!retryable || !shouldRetryAttempt(retryPolicy, adapterAttempts)) {
       return {
@@ -437,7 +484,7 @@ async function resolveAdapterResultForBinding({
         outcome: failureOutcome({
           bindingId: item.bindingId,
           stage: "ADAPTER",
-          code: currentResult.error.code,
+          code: validatedResult.error.code,
           retryable,
           adapterAttempts,
           databaseAttempts: 0,
@@ -452,7 +499,7 @@ async function resolveAdapterResultForBinding({
     const delayDecision = calculateRetryDelayDecision({
       policy: retryPolicy,
       retryIndex: adapterAttempts,
-      retryAfterMs: retryAfterForAdapterError(currentResult.error),
+      retryAfterMs: retryAfterForAdapterError(validatedResult.error),
       randomInteger: retryRuntime.randomInteger,
     });
 
@@ -463,7 +510,7 @@ async function resolveAdapterResultForBinding({
         outcome: failureOutcome({
           bindingId: item.bindingId,
           stage: "ADAPTER",
-          code: currentResult.error.code,
+          code: validatedResult.error.code,
           retryable,
           adapterAttempts,
           databaseAttempts: 0,
@@ -514,6 +561,7 @@ async function resolveAdapterResultForBinding({
       }
 
       currentResult = singleResult;
+      resultContext = "RETRY";
     } catch {
       if (signal?.aborted) {
         return {
@@ -541,31 +589,154 @@ async function resolveAdapterResultForBinding({
 function validateSingleAdapterRetryResult(
   workUnit: ValidatedWorkUnit,
   item: ValidatedBindingWorkItem,
-  results: readonly CustodyBalanceObservationResult[],
-): CustodyBalanceObservationResult | null {
+  results: readonly unknown[],
+): unknown | null {
   if (results.length !== 1) {
     return null;
   }
 
   const result = results[0];
 
-  if (!result || bindingResultKey(result.binding) !== bindingResultKey(item.binding)) {
+  if (
+    !isRecord(result) ||
+    !isCustodyAccountBindingRef(result.binding) ||
+    bindingResultKey(result.binding) !== bindingResultKey(item.binding)
+  ) {
     return null;
   }
 
-  if (!result.ok) {
+  if (result.ok !== true) {
     return result;
   }
 
-  if (bindingResultKey(result.observation.binding) !== bindingResultKey(item.binding)) {
+  if (
+    !isRecord(result.observation) ||
+    !isCustodyAccountBindingRef(result.observation.binding) ||
+    bindingResultKey(result.observation.binding) !== bindingResultKey(item.binding)
+  ) {
     return null;
   }
 
-  if (!providerRefsEqual(workUnit.provider, result.observation.provider)) {
+  if (
+    !isCustodyProviderRef(result.observation.provider) ||
+    !providerRefsEqual(workUnit.provider, result.observation.provider)
+  ) {
     return null;
   }
 
   return result;
+}
+
+function validateAdapterResultForBinding(
+  workUnit: ValidatedWorkUnit,
+  item: ValidatedBindingWorkItem,
+  result: unknown,
+  context: "INITIAL" | "RETRY",
+):
+  | {
+      ok: true;
+      result: CustodyBalanceObservationResult;
+    }
+  | {
+      ok: false;
+      stage: "VALIDATION" | "IDENTITY";
+      code: "ADAPTER_RESULT_INVALID" | "ADAPTER_RETRY_RESULT_INVALID" | "ADAPTER_IDENTITY_INVALID";
+    } {
+  const invalidCode =
+    context === "RETRY"
+      ? "ADAPTER_RETRY_RESULT_INVALID"
+      : "ADAPTER_RESULT_INVALID";
+
+  if (!isRecord(result) || typeof result.ok !== "boolean") {
+    return {
+      ok: false,
+      stage: "VALIDATION",
+      code: invalidCode,
+    };
+  }
+
+  if (!isCustodyAccountBindingRef(result.binding)) {
+    return {
+      ok: false,
+      stage: "VALIDATION",
+      code: invalidCode,
+    };
+  }
+
+  if (bindingResultKey(result.binding) !== bindingResultKey(item.binding)) {
+    return {
+      ok: false,
+      stage: "VALIDATION",
+      code: invalidCode,
+    };
+  }
+
+  if (result.ok) {
+    if (!isRecord(result.observation)) {
+      return {
+        ok: false,
+        stage: "VALIDATION",
+        code: invalidCode,
+      };
+    }
+
+    if (
+      !isCustodyProviderRef(result.observation.provider) ||
+      !providerRefsEqual(workUnit.provider, result.observation.provider) ||
+      !isCustodyAccountBindingRef(result.observation.binding) ||
+      bindingResultKey(result.observation.binding) !==
+        bindingResultKey(item.binding) ||
+      typeof result.observation.observedAvailableUnits !== "string" ||
+      typeof result.observation.observedTotalUnits !== "string" ||
+      typeof result.observation.observedAt !== "string" ||
+      !(
+        result.observation.finalizedAt === null ||
+        typeof result.observation.finalizedAt === "string"
+      )
+    ) {
+      return {
+        ok: false,
+        stage: "VALIDATION",
+        code: invalidCode,
+      };
+    }
+
+    if (!isValidObservationIdentity(result.observation.identity)) {
+      return {
+        ok: false,
+        stage: "IDENTITY",
+        code: "ADAPTER_IDENTITY_INVALID",
+      };
+    }
+
+    return {
+      ok: true,
+      result: result as CustodyBalanceObservationResult,
+    };
+  }
+
+  if (
+    !isRecord(result.error) ||
+    result.error instanceof Error ||
+    "message" in result.error ||
+    "stack" in result.error ||
+    "payload" in result.error ||
+    typeof result.error.code !== "string" ||
+    !ADAPTER_ERROR_CODES.has(result.error.code) ||
+    typeof result.error.retryable !== "boolean" ||
+    !isValidRetryAfterMs(result.error.retryAfterMs)
+  ) {
+    return {
+      ok: false,
+      stage: "VALIDATION",
+      code: invalidCode,
+    };
+  }
+
+  return {
+    ok: true,
+    result: result as CustodyBalanceObservationResult,
+  };
 }
 
 function normalizeSuccessfulObservation(
@@ -801,7 +972,7 @@ function normalizeCheckpointVersion(value: unknown): string {
 
 function validateAdapterResults(
   workUnit: ValidatedWorkUnit,
-  results: readonly CustodyBalanceObservationResult[],
+  results: readonly unknown[],
 ): string | null {
   if (results.length < workUnit.bindings.length) {
     return "ADAPTER_MISSING_RESULT";
@@ -815,10 +986,18 @@ function validateAdapterResults(
     bindingResultKey(item.binding),
   );
   const requestedKeySet = new Set(requestedKeys);
-  const resultKeys = results.map((result) => bindingResultKey(result.binding));
+  const resultKeys = results.map((result) =>
+    isRecord(result) && isCustodyAccountBindingRef(result.binding)
+      ? bindingResultKey(result.binding)
+      : null,
+  );
   const resultKeySet = new Set<string>();
 
   for (const key of resultKeys) {
+    if (key === null) {
+      continue;
+    }
+
     if (resultKeySet.has(key)) {
       return "ADAPTER_DUPLICATE_BINDING";
     }
@@ -830,28 +1009,39 @@ function validateAdapterResults(
     }
   }
 
-  for (const key of requestedKeys) {
-    if (!resultKeySet.has(key)) {
-      return "ADAPTER_MISSING_RESULT";
+  if (resultKeySet.size === resultKeys.length) {
+    for (const key of requestedKeys) {
+      if (!resultKeySet.has(key)) {
+        return "ADAPTER_MISSING_RESULT";
+      }
     }
-  }
 
-  for (let index = 0; index < requestedKeys.length; index += 1) {
-    if (requestedKeys[index] !== resultKeys[index]) {
-      return "ADAPTER_RESULT_ORDER_MISMATCH";
+    for (let index = 0; index < requestedKeys.length; index += 1) {
+      if (requestedKeys[index] !== resultKeys[index]) {
+        return "ADAPTER_RESULT_ORDER_MISMATCH";
+      }
     }
   }
 
   for (const result of results) {
-    if (!result.ok) {
+    if (!isRecord(result) || result.ok !== true) {
       continue;
     }
 
-    if (bindingResultKey(result.binding) !== bindingResultKey(result.observation.binding)) {
+    if (
+      !isRecord(result.observation) ||
+      !isCustodyAccountBindingRef(result.binding) ||
+      !isCustodyAccountBindingRef(result.observation.binding) ||
+      bindingResultKey(result.binding) !==
+        bindingResultKey(result.observation.binding)
+    ) {
       return "ADAPTER_BINDING_MISMATCH";
     }
 
-    if (!providerRefsEqual(workUnit.provider, result.observation.provider)) {
+    if (
+      !isCustodyProviderRef(result.observation.provider) ||
+      !providerRefsEqual(workUnit.provider, result.observation.provider)
+    ) {
       return "ADAPTER_PROVIDER_MISMATCH";
     }
   }
@@ -873,6 +1063,66 @@ function providerRefsEqual(
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isCustodyProviderRef(value: unknown): value is CustodyProviderRef {
+  return (
+    isRecord(value) &&
+    typeof value.providerCode === "string" &&
+    typeof value.providerType === "string" &&
+    Array.isArray(value.capabilities) &&
+    value.capabilities.every((capability) => typeof capability === "string")
+  );
+}
+
+function isCustodyAccountBindingRef(
+  value: unknown,
+): value is CustodyAccountBindingRef {
+  return (
+    isRecord(value) &&
+    typeof value.providerCode === "string" &&
+    typeof value.bindingKey === "string" &&
+    typeof value.assetCode === "string" &&
+    typeof value.accountRole === "string"
+  );
+}
+
+function isValidObservationIdentity(
+  value: unknown,
+): value is CustodyBalanceObservationIdentity {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+
+  if (value.kind === "CONTENT") {
+    return !("value" in value);
+  }
+
+  if (value.kind !== "NATIVE" && value.kind !== "CHECKPOINT") {
+    return false;
+  }
+
+  try {
+    normalizeObservationIdentityValue(value.value);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidRetryAfterMs(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (typeof value === "number" &&
+      Number.isSafeInteger(value) &&
+      value >= 0 &&
+      value <= MAX_ADAPTER_RETRY_AFTER_MS)
+  );
+}
+
 function bindingResultKey(binding: CustodyAccountBindingRef): string {
   return [
     binding.providerCode,
@@ -883,9 +1133,9 @@ function bindingResultKey(binding: CustodyAccountBindingRef): string {
 }
 
 function countAdapterSuccesses(
-  results: readonly CustodyBalanceObservationResult[],
+  results: readonly unknown[],
 ): number {
-  return results.filter((result) => result.ok).length;
+  return results.filter((result) => isRecord(result) && result.ok === true).length;
 }
 
 function isRetryableAdapterError(code: string): boolean {

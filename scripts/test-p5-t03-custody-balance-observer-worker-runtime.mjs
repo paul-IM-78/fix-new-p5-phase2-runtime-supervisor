@@ -664,6 +664,171 @@ async function assertAdapterResultValidationScenarios(modules, client) {
     "ADAPTER_UNEXPECTED_RESULT",
     "Result unexpected binding",
   );
+
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "UNKNOWN_PROVIDER_CODE",
+        retryable: true,
+        retryAfterMs: null,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Unknown error code isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "TIMEOUT",
+        retryable: "true",
+        retryAfterMs: null,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retryable string isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "TIMEOUT",
+        retryable: null,
+        retryAfterMs: null,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retryable null isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "RATE_LIMITED",
+        retryable: true,
+        retryAfterMs: -1,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retry-After negative isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "RATE_LIMITED",
+        retryable: true,
+        retryAfterMs: Number.NaN,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retry-After NaN isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "RATE_LIMITED",
+        retryable: true,
+        retryAfterMs: Number.POSITIVE_INFINITY,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retry-After infinity isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "RATE_LIMITED",
+        retryable: true,
+        retryAfterMs: "1",
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retry-After string isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      errorResult(requested[0], {
+        code: "RATE_LIMITED",
+        retryable: true,
+        retryAfterMs: 300_001,
+      }),
+      baseResults[1],
+    ],
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Retry-After max isolated",
+  );
+  await assertRetryableFalseNoRetry(runCustodyBalanceObserverWorkUnit, unit);
+  await assertNonRetryableCatalogNoRetry(runCustodyBalanceObserverWorkUnit, unit);
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      successResult(requested[0], PROVIDER, {
+        kind: "UNKNOWN",
+        value: "p5t03-worker-unknown-identity",
+      }),
+      baseResults[1],
+    ],
+    "IDENTITY",
+    "ADAPTER_IDENTITY_INVALID",
+    "Unknown identity isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      successResult(requested[0], PROVIDER, {
+        kind: "NATIVE",
+      }),
+      baseResults[1],
+    ],
+    "IDENTITY",
+    "ADAPTER_IDENTITY_INVALID",
+    "Native identity value missing isolated",
+  );
+  await assertPerBindingAdapterValidationFailure(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    [
+      successResult(requested[0], PROVIDER, {
+        kind: "CHECKPOINT",
+        value: 1,
+      }),
+      baseResults[1],
+    ],
+    "IDENTITY",
+    "ADAPTER_IDENTITY_INVALID",
+    "Checkpoint identity value invalid isolated",
+  );
+  await assertMalformedRetryResultValidation(runCustodyBalanceObserverWorkUnit, unit);
 }
 
 async function assertAbortScenarios(modules, client) {
@@ -832,6 +997,144 @@ async function assertValidationFailure(
   assert(result.summary.databaseAttempts === 0, `${label} DB attempts`);
   assertCountsEqual(before, await observerCounts(), `${label} side effects`);
   pass(label);
+}
+
+async function assertPerBindingAdapterValidationFailure(
+  runCustodyBalanceObserverWorkUnit,
+  unit,
+  results,
+  stage,
+  code,
+  label,
+) {
+  const commandClient = recordingNoopCommandClient();
+  const result = await runCustodyBalanceObserverWorkUnit({
+    workUnit: unit,
+    adapter: controlledAdapter(results),
+    commandClient,
+  });
+
+  assert(result.outcomes.length === 2, `${label} outcome count`);
+  assertFailure(result.outcomes[0], stage, code);
+  assert(result.outcomes[0].databaseAttempts === 0, `${label} failed DB zero`);
+  assert(result.outcomes[1]?.ok === true, `${label} next binding continued`);
+  assert(commandClient.calls.length === 1, `${label} next binding DB only`);
+  assert(result.summary.databaseAttempts === 1, `${label} summary DB count`);
+  assert(result.summary.failedBindings === 1, `${label} failed binding count`);
+  assert(!JSON.stringify(result.outcomes[0]).includes("UNKNOWN_PROVIDER_CODE"), `${label} raw code hidden`);
+  pass(label);
+}
+
+async function assertRetryableFalseNoRetry(runCustodyBalanceObserverWorkUnit, unit) {
+  const commandClient = recordingNoopCommandClient();
+  let adapterCalls = 0;
+  const result = await runCustodyBalanceObserverWorkUnit({
+    workUnit: {
+      ...unit,
+      bindings: [unit.bindings[0]],
+    },
+    adapter: scriptedAdapter(() => {
+      adapterCalls += 1;
+
+      return [
+        errorResult(unit.bindings[0].binding, {
+          code: "TIMEOUT",
+          retryable: false,
+          retryAfterMs: null,
+        }),
+      ];
+    }),
+    commandClient,
+    retryPolicy: shortRetryPolicy(),
+    retryRuntime: immediateRetryRuntime(),
+  });
+
+  assertFailure(result.outcomes[0], "ADAPTER", "TIMEOUT");
+  assert(result.outcomes[0].adapterAttempts === 1, "Retryable false attempts one");
+  assert(adapterCalls === 1, "Retryable false adapter calls one");
+  assert(commandClient.calls.length === 0, "Retryable false DB zero");
+  assert(!result.outcomes[0].retryExhausted, "Retryable false not exhausted");
+  pass("Retryable false no retry");
+}
+
+async function assertNonRetryableCatalogNoRetry(
+  runCustodyBalanceObserverWorkUnit,
+  unit,
+) {
+  const commandClient = recordingNoopCommandClient();
+  let adapterCalls = 0;
+  const result = await runCustodyBalanceObserverWorkUnit({
+    workUnit: {
+      ...unit,
+      bindings: [unit.bindings[0]],
+    },
+    adapter: scriptedAdapter(() => {
+      adapterCalls += 1;
+
+      return [
+        errorResult(unit.bindings[0].binding, {
+          code: "UNSUPPORTED_ASSET",
+          retryable: true,
+          retryAfterMs: null,
+        }),
+      ];
+    }),
+    commandClient,
+    retryPolicy: shortRetryPolicy(),
+    retryRuntime: immediateRetryRuntime(),
+  });
+
+  assertFailure(result.outcomes[0], "ADAPTER", "UNSUPPORTED_ASSET");
+  assert(result.outcomes[0].adapterAttempts === 1, "Non-retryable attempts one");
+  assert(adapterCalls === 1, "Non-retryable adapter calls one");
+  assert(commandClient.calls.length === 0, "Non-retryable DB zero");
+  assert(!result.outcomes[0].retryable, "Non-retryable catalog wins");
+  pass("Non-retryable catalog no retry");
+}
+
+async function assertMalformedRetryResultValidation(
+  runCustodyBalanceObserverWorkUnit,
+  unit,
+) {
+  const commandClient = recordingNoopCommandClient();
+  let adapterCalls = 0;
+  const result = await runCustodyBalanceObserverWorkUnit({
+    workUnit: {
+      ...unit,
+      bindings: [unit.bindings[0]],
+    },
+    adapter: scriptedAdapter(() => {
+      adapterCalls += 1;
+
+      if (adapterCalls === 1) {
+        return [
+          errorResult(unit.bindings[0].binding, {
+            code: "TIMEOUT",
+            retryable: true,
+            retryAfterMs: null,
+          }),
+        ];
+      }
+
+      return [
+        errorResult(unit.bindings[0].binding, {
+          code: "UNKNOWN_RETRY_CODE",
+          retryable: true,
+          retryAfterMs: null,
+        }),
+      ];
+    }),
+    commandClient,
+    retryPolicy: shortRetryPolicy(),
+    retryRuntime: immediateRetryRuntime(),
+  });
+
+  assertFailure(result.outcomes[0], "VALIDATION", "ADAPTER_RETRY_RESULT_INVALID");
+  assert(result.outcomes[0].adapterAttempts === 2, "Malformed retry attempts two");
+  assert(adapterCalls === 2, "Malformed retry adapter calls two");
+  assert(commandClient.calls.length === 0, "Malformed retry DB zero");
+  assert(!JSON.stringify(result.outcomes[0]).includes("UNKNOWN_RETRY_CODE"), "Malformed retry raw code hidden");
+  pass("Malformed retry result invalid");
 }
 
 async function loadRuntimeModules() {
@@ -1066,6 +1369,31 @@ function controlledAdapter(results) {
   };
 }
 
+function scriptedAdapter(readBalances) {
+  return {
+    provider: PROVIDER,
+    async readHealth() {
+      return {
+        provider: PROVIDER,
+        status: "AVAILABLE",
+        checkedAt: "2026-08-01T01:00:00.000000Z",
+      };
+    },
+    async readBalances(bindings) {
+      return readBalances(bindings);
+    },
+    async readTransfers() {
+      return {
+        observations: [],
+        page: {
+          cursor: null,
+          hasMore: false,
+        },
+      };
+    },
+  };
+}
+
 function createRecordingCommandClient(delegate) {
   const calls = [];
 
@@ -1089,21 +1417,68 @@ function createRecordingCommandClient(delegate) {
   };
 }
 
-function successResult(bindingRef, provider) {
+function recordingNoopCommandClient() {
+  const calls = [];
+
+  return {
+    calls,
+    async recordBalanceObservationAndAdvanceCheckpoint(input) {
+      calls.push(input);
+
+      return {
+        observationCreated: true,
+        checkpointCreated: true,
+        checkpointAdvanced: false,
+        checkpointVersion: "1",
+      };
+    },
+    async close() {},
+  };
+}
+
+function shortRetryPolicy() {
+  return {
+    mode: "BOUNDED_V1",
+    maxAttempts: 3,
+    baseDelayMs: 1,
+    maxDelayMs: 1,
+    jitterRatio: 0,
+    maxRetryAfterMs: 100,
+  };
+}
+
+function immediateRetryRuntime() {
+  return {
+    sleep() {
+      return "COMPLETED";
+    },
+    randomInteger() {
+      return 0;
+    },
+  };
+}
+
+function successResult(bindingRef, provider, identity = { kind: "CONTENT" }) {
   return {
     ok: true,
     binding: bindingRef,
     observation: {
       provider,
       binding: bindingRef,
-      identity: {
-        kind: "CONTENT",
-      },
+      identity,
       observedAvailableUnits: "1",
       observedTotalUnits: "1",
       observedAt: "2026-08-01T08:00:00.000000Z",
       finalizedAt: null,
     },
+  };
+}
+
+function errorResult(bindingRef, error) {
+  return {
+    ok: false,
+    binding: bindingRef,
+    error,
   };
 }
 

@@ -547,6 +547,31 @@ async function assertMockAdapter(normalization, mockAdapter) {
   const replayedResults = await adapter.readBalances(requestedBindings);
   assert(JSON.stringify(results) === JSON.stringify(replayedResults), "Replay deterministic");
   pass("Mock deterministic replay");
+
+  const raceSignal = createAbortRegistrationRaceSignal();
+  const delayAdapter = createMockCustodyObservationAdapter({
+    provider: PROVIDER,
+    health: {
+      status: "AVAILABLE",
+      checkedAt: "2026-08-01T01:00:00Z",
+    },
+    balances: [success(bindings.native, { kind: "CONTENT" })],
+    balanceReadDelayMs: 1,
+  });
+  let raceRejected = false;
+
+  try {
+    await delayAdapter.readBalances([bindings.native], {
+      signal: raceSignal.signal,
+    });
+  } catch {
+    raceRejected = true;
+  }
+
+  assert(raceRejected, "Mock delay race rejected");
+  pass("Mock delay registration race");
+  assert(raceSignal.listenerCount === 0, "Mock delay listener cleanup");
+  pass("Mock delay race cleanup");
   assert(
     await resolves(adapter.readBalances([bindings.timeout, bindings.native])),
     "Batch does not reject",
@@ -804,6 +829,40 @@ function errorFixture(fixtureBinding, code, retryAfterMs = null) {
     binding: fixtureBinding,
     code,
     retryAfterMs,
+  };
+}
+
+function createAbortRegistrationRaceSignal() {
+  let aborted = false;
+  let listenerCount = 0;
+  let listener = null;
+
+  return {
+    signal: {
+      get aborted() {
+        return aborted;
+      },
+      addEventListener(type, callback) {
+        if (type !== "abort") {
+          return;
+        }
+
+        listener = callback;
+        listenerCount += 1;
+        aborted = true;
+      },
+      removeEventListener(type, callback) {
+        if (type !== "abort" || listener !== callback) {
+          return;
+        }
+
+        listener = null;
+        listenerCount -= 1;
+      },
+    },
+    get listenerCount() {
+      return listenerCount;
+    },
   };
 }
 
