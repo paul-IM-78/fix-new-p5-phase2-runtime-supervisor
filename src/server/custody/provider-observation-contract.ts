@@ -39,14 +39,57 @@ export type CustodyProviderHealth = {
   checkedAt: string;
 };
 
+export type CustodyBalanceObservationIdentity =
+  | {
+      kind: "NATIVE";
+      value: string;
+    }
+  | {
+      kind: "CHECKPOINT";
+      value: string;
+    }
+  | {
+      kind: "CONTENT";
+    };
+
 export type CustodyBalanceObservation = {
   provider: CustodyProviderRef;
   binding: CustodyAccountBindingRef;
+  identity: CustodyBalanceObservationIdentity;
   observedAvailableUnits: string;
   observedTotalUnits: string;
   observedAt: string;
   finalizedAt: string | null;
 };
+
+export type CustodyBalanceObservationErrorCode =
+  | "TIMEOUT"
+  | "RATE_LIMITED"
+  | "PROVIDER_UNAVAILABLE"
+  | "UNSUPPORTED_ASSET"
+  | "MALFORMED_AMOUNT"
+  | "MALFORMED_TIMESTAMP"
+  | "MISSING_RESULT"
+  | "DUPLICATE_RESULT"
+  | "UNEXPECTED_RESULT";
+
+export type CustodyBalanceObservationError = {
+  code: CustodyBalanceObservationErrorCode;
+  retryable: boolean;
+  retryAfterMs: number | null;
+};
+
+export type CustodyBalanceObservationResult =
+  | {
+      ok: true;
+      binding: CustodyAccountBindingRef;
+      observation: CustodyBalanceObservation;
+    }
+  | {
+      ok: false;
+      binding: CustodyAccountBindingRef;
+      error: CustodyBalanceObservationError;
+    };
 
 export type CustodyTransferObservation = {
   provider: CustodyProviderRef;
@@ -74,7 +117,7 @@ export type CustodyObservationAdapter = {
   readHealth(): Promise<CustodyProviderHealth>;
   readBalances(
     bindings: readonly CustodyAccountBindingRef[],
-  ): Promise<readonly CustodyBalanceObservation[]>;
+  ): Promise<readonly CustodyBalanceObservationResult[]>;
   readTransfers(input: {
     bindings: readonly CustodyAccountBindingRef[];
     sinceObservedAt: string | null;
