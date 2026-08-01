@@ -15,6 +15,7 @@ import type {
   CustodyObservationAdapter,
   CustodyObservationAdapterFactory,
   CustodyObservationPage,
+  CustodyObservationReadOptions,
   CustodyProviderHealth,
   CustodyProviderHealthStatus,
   CustodyProviderRef,
@@ -51,6 +52,7 @@ export type MockCustodyObservationAdapterConfig = {
   };
   balances: readonly MockBalanceObservationFixture[];
   transfers?: readonly CustodyTransferObservation[];
+  balanceReadDelayMs?: number;
 };
 
 export function createMockCustodyObservationAdapter(
@@ -98,6 +100,7 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
   >();
   private readonly duplicateBindingKeys = new Set<string>();
   private readonly transfers: readonly CustodyTransferObservation[];
+  private readonly balanceReadDelayMs: number;
 
   constructor(config: MockCustodyObservationAdapterConfig) {
     this.provider = config.provider;
@@ -107,6 +110,7 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
       checkedAt: normalizeUtcMicrosecondTimestamp(config.health.checkedAt),
     };
     this.transfers = config.transfers ?? [];
+    this.balanceReadDelayMs = normalizeDelayMs(config.balanceReadDelayMs ?? 0);
 
     for (const fixture of config.balances) {
       const key = bindingResultKey(fixture.binding);
@@ -125,7 +129,12 @@ class MockCustodyObservationAdapter implements CustodyObservationAdapter {
 
   async readBalances(
     bindings: readonly CustodyAccountBindingRef[],
+    options: CustodyObservationReadOptions = {},
   ): Promise<readonly CustodyBalanceObservationResult[]> {
+    throwIfAborted(options.signal);
+    await waitForDelay(this.balanceReadDelayMs, options.signal);
+    throwIfAborted(options.signal);
+
     return bindings.map((binding) => this.readBindingBalance(binding));
   }
 
@@ -260,4 +269,55 @@ function isRetryableErrorCode(code: CustodyBalanceObservationErrorCode): boolean
     code === "PROVIDER_UNAVAILABLE" ||
     code === "MISSING_RESULT"
   );
+}
+
+function normalizeDelayMs(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > 10_000
+  ) {
+    throw new RangeError("mock_balance_read_delay_invalid");
+  }
+
+  return value;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error("custody_balance_observation_read_aborted");
+  }
+}
+
+function waitForDelay(
+  delayMs: number,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (delayMs === 0) {
+    return Promise.resolve();
+  }
+
+  throwIfAborted(signal);
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+
+    const abort = () => {
+      cleanup();
+      reject(new Error("custody_balance_observation_read_aborted"));
+    };
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+    };
+
+    signal?.addEventListener("abort", abort, {
+      once: true,
+    });
+  });
 }

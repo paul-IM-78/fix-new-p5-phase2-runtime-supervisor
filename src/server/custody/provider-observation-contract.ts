@@ -112,11 +112,16 @@ export type CustodyObservationPage<TObservation> = {
   page: CustodyObservationPageCursor;
 };
 
+export type CustodyObservationReadOptions = {
+  signal?: AbortSignal;
+};
+
 export type CustodyObservationAdapter = {
   readonly provider: CustodyProviderRef;
   readHealth(): Promise<CustodyProviderHealth>;
   readBalances(
     bindings: readonly CustodyAccountBindingRef[],
+    options?: CustodyObservationReadOptions,
   ): Promise<readonly CustodyBalanceObservationResult[]>;
   readTransfers(input: {
     bindings: readonly CustodyAccountBindingRef[];
