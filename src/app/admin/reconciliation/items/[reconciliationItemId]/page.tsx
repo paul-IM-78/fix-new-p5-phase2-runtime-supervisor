@@ -9,6 +9,7 @@ import {
   formatSignedAtomicUnits,
 } from "@/lib/reconciliation/display";
 import { getReconciliationReadPublicMessage } from "@/lib/reconciliation/public-results";
+import { shouldShowReconciliationReviewActionSurface } from "@/lib/reconciliation/review-actions";
 import { parseReconciliationItemId } from "@/lib/reconciliation/validation";
 import {
   getAdminReconciliationItemDetail,
@@ -18,6 +19,7 @@ import {
 } from "@/server/admin/reconciliation-read-model";
 import { getCurrentAdminAccess } from "@/server/auth/admin-guard";
 
+import { ReconciliationReviewActions } from "./_review-actions";
 import {
   AdminPageHeader,
   Alert,
@@ -141,7 +143,7 @@ function ReconciliationItemDetailView({
             <StatusBadge value={detail.run.status} />
           </div>
         }
-        description="Read-only ADMIN+AAL2 detail for run metadata, item balances, binding provenance, review case state, and review event history. No review or ledger mutation controls are present."
+        description="ADMIN+AAL2 detail for run metadata, item balances, binding provenance, review case state, review event history, and bounded review lifecycle actions. Ledger, balance, observation, provider, and reconciliation data are not mutated here."
         eyebrowHref="/admin/reconciliation"
         eyebrowLabel="Reconciliation"
         title={`${detail.item.asset.symbol} reconciliation item`}
@@ -278,6 +280,33 @@ function ReconciliationItemDetailView({
           <EmptyState>No review case exists for this item.</EmptyState>
         )}
       </Section>
+
+      {shouldShowReconciliationReviewActionSurface({
+        classification: detail.item.classification,
+        reviewCase: detail.reviewCase
+          ? {
+              id: detail.reviewCase.id,
+              status: detail.reviewCase.status,
+              version: detail.reviewCase.version,
+            }
+          : null,
+      }) ? (
+        <Section title="Review actions">
+          <ReconciliationReviewActions
+            classification={detail.item.classification}
+            reconciliationItemId={detail.item.id}
+            reviewCase={
+              detail.reviewCase
+                ? {
+                    id: detail.reviewCase.id,
+                    status: detail.reviewCase.status,
+                    version: detail.reviewCase.version,
+                  }
+                : null
+            }
+          />
+        </Section>
+      ) : null}
 
       <Section title="Review event timeline">
         {detail.reviewEvents.length > 0 ? (
