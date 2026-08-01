@@ -592,9 +592,8 @@ async function assertAdapterResultValidationScenarios(modules, client) {
     "ADAPTER_RESULT_ORDER_MISMATCH",
     "Result order mismatch",
   );
-  await assertValidationFailure(
+  await assertPerBindingAdapterValidationFailure(
     runCustodyBalanceObserverWorkUnit,
-    client,
     unit,
     [
       {
@@ -606,12 +605,12 @@ async function assertAdapterResultValidationScenarios(modules, client) {
       },
       baseResults[1],
     ],
-    "ADAPTER_BINDING_MISMATCH",
-    "Result binding mismatch",
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Binding mismatch isolated",
   );
-  await assertValidationFailure(
+  await assertPerBindingAdapterValidationFailure(
     runCustodyBalanceObserverWorkUnit,
-    client,
     unit,
     [
       {
@@ -626,8 +625,10 @@ async function assertAdapterResultValidationScenarios(modules, client) {
       },
       baseResults[1],
     ],
-    "ADAPTER_PROVIDER_MISMATCH",
-    "Result provider mismatch",
+    "VALIDATION",
+    "ADAPTER_RESULT_INVALID",
+    "Provider mismatch isolated",
+    ["P5T03_WORKER_PROVIDER_ALT"],
   );
   await assertValidationFailure(
     runCustodyBalanceObserverWorkUnit,
@@ -829,6 +830,32 @@ async function assertAdapterResultValidationScenarios(modules, client) {
     "Checkpoint identity value invalid isolated",
   );
   await assertMalformedRetryResultValidation(runCustodyBalanceObserverWorkUnit, unit);
+  await assertRetryNonArrayResultValidation(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    null,
+    "Retry non-array null invalid",
+  );
+  await assertRetryNonArrayResultValidation(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    undefined,
+    "Retry non-array undefined invalid",
+  );
+  await assertRetryNonArrayResultValidation(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    { raw: "p5t03 retry object should stay hidden" },
+    "Retry non-array object invalid",
+    ["p5t03 retry object should stay hidden"],
+  );
+  await assertRetryNonArrayResultValidation(
+    runCustodyBalanceObserverWorkUnit,
+    unit,
+    "p5t03 retry string should stay hidden",
+    "Retry non-array string invalid",
+    ["p5t03 retry string should stay hidden"],
+  );
 }
 
 async function assertAbortScenarios(modules, client) {
@@ -1006,6 +1033,7 @@ async function assertPerBindingAdapterValidationFailure(
   stage,
   code,
   label,
+  hiddenValues = ["UNKNOWN_PROVIDER_CODE"],
 ) {
   const commandClient = recordingNoopCommandClient();
   const result = await runCustodyBalanceObserverWorkUnit({
@@ -1021,7 +1049,10 @@ async function assertPerBindingAdapterValidationFailure(
   assert(commandClient.calls.length === 1, `${label} next binding DB only`);
   assert(result.summary.databaseAttempts === 1, `${label} summary DB count`);
   assert(result.summary.failedBindings === 1, `${label} failed binding count`);
-  assert(!JSON.stringify(result.outcomes[0]).includes("UNKNOWN_PROVIDER_CODE"), `${label} raw code hidden`);
+  const serializedFailure = JSON.stringify(result.outcomes[0]);
+  for (const hiddenValue of hiddenValues) {
+    assert(!serializedFailure.includes(hiddenValue), `${label} raw value hidden`);
+  }
   pass(label);
 }
 
@@ -1135,6 +1166,53 @@ async function assertMalformedRetryResultValidation(
   assert(commandClient.calls.length === 0, "Malformed retry DB zero");
   assert(!JSON.stringify(result.outcomes[0]).includes("UNKNOWN_RETRY_CODE"), "Malformed retry raw code hidden");
   pass("Malformed retry result invalid");
+}
+
+async function assertRetryNonArrayResultValidation(
+  runCustodyBalanceObserverWorkUnit,
+  unit,
+  retryResult,
+  label,
+  hiddenValues = [],
+) {
+  const commandClient = recordingNoopCommandClient();
+  let adapterCalls = 0;
+  const result = await runCustodyBalanceObserverWorkUnit({
+    workUnit: {
+      ...unit,
+      bindings: [unit.bindings[0]],
+    },
+    adapter: scriptedAdapter(() => {
+      adapterCalls += 1;
+
+      if (adapterCalls === 1) {
+        return [
+          errorResult(unit.bindings[0].binding, {
+            code: "TIMEOUT",
+            retryable: true,
+            retryAfterMs: null,
+          }),
+        ];
+      }
+
+      return retryResult;
+    }),
+    commandClient,
+    retryPolicy: shortRetryPolicy(),
+    retryRuntime: immediateRetryRuntime(),
+  });
+
+  assertFailure(result.outcomes[0], "VALIDATION", "ADAPTER_RETRY_RESULT_INVALID");
+  assert(result.outcomes[0].adapterAttempts === 2, `${label} attempts two`);
+  assert(adapterCalls === 2, `${label} adapter calls two`);
+  assert(commandClient.calls.length === 0, `${label} DB zero`);
+  assert(result.summary.databaseAttempts === 0, `${label} summary DB zero`);
+  assert(!result.outcomes[0].retryExhausted, `${label} not exhausted`);
+  const serializedFailure = JSON.stringify(result.outcomes[0]);
+  for (const hiddenValue of hiddenValues) {
+    assert(!serializedFailure.includes(hiddenValue), `${label} raw value hidden`);
+  }
+  pass(label);
 }
 
 async function loadRuntimeModules() {

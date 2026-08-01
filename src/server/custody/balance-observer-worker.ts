@@ -536,13 +536,29 @@ async function resolveAdapterResultForBinding({
     adapterAttempts += 1;
 
     try {
-      const retryResults = await adapter.readBalances([item.binding], {
+      const rawRetryResults = await adapter.readBalances([item.binding], {
         signal,
       });
+
+      if (!Array.isArray(rawRetryResults)) {
+        return {
+          kind: "FAILURE",
+          adapterFailureCount: 1,
+          outcome: failureOutcome({
+            bindingId: item.bindingId,
+            stage: "VALIDATION",
+            code: "ADAPTER_RETRY_RESULT_INVALID",
+            retryable: false,
+            adapterAttempts,
+            databaseAttempts: 0,
+          }),
+        };
+      }
+
       const singleResult = validateSingleAdapterRetryResult(
         workUnit,
         item,
-        retryResults,
+        rawRetryResults,
       );
 
       if (!singleResult) {
@@ -1020,29 +1036,6 @@ function validateAdapterResults(
       if (requestedKeys[index] !== resultKeys[index]) {
         return "ADAPTER_RESULT_ORDER_MISMATCH";
       }
-    }
-  }
-
-  for (const result of results) {
-    if (!isRecord(result) || result.ok !== true) {
-      continue;
-    }
-
-    if (
-      !isRecord(result.observation) ||
-      !isCustodyAccountBindingRef(result.binding) ||
-      !isCustodyAccountBindingRef(result.observation.binding) ||
-      bindingResultKey(result.binding) !==
-        bindingResultKey(result.observation.binding)
-    ) {
-      return "ADAPTER_BINDING_MISMATCH";
-    }
-
-    if (
-      !isCustodyProviderRef(result.observation.provider) ||
-      !providerRefsEqual(workUnit.provider, result.observation.provider)
-    ) {
-      return "ADAPTER_PROVIDER_MISMATCH";
     }
   }
 
