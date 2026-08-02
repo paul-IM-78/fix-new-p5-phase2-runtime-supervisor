@@ -194,27 +194,30 @@ select extensions.is(
 select extensions.is(
   (
     select count(*)::integer
-    from information_schema.tables as tables
-    where tables.table_schema = 'private'
+    from pg_catalog.pg_class as classes
+    join pg_catalog.pg_namespace as namespaces
+      on namespaces.oid = classes.relnamespace
+    where namespaces.nspname = 'private'
+      and classes.relkind in ('r', 'p', 'v', 'm', 'f')
       and (
-        has_table_privilege(
+        pg_catalog.has_table_privilege(
           'custody_observer_worker',
-          'private.' || tables.table_name,
+          classes.oid,
           'select'
         )
-        or has_table_privilege(
+        or pg_catalog.has_table_privilege(
           'custody_observer_worker',
-          'private.' || tables.table_name,
+          classes.oid,
           'insert'
         )
-        or has_table_privilege(
+        or pg_catalog.has_table_privilege(
           'custody_observer_worker',
-          'private.' || tables.table_name,
+          classes.oid,
           'update'
         )
-        or has_table_privilege(
+        or pg_catalog.has_table_privilege(
           'custody_observer_worker',
-          'private.' || tables.table_name,
+          classes.oid,
           'delete'
         )
       )
