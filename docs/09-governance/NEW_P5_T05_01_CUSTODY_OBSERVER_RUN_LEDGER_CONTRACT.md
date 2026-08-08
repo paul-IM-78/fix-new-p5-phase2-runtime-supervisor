@@ -267,12 +267,57 @@ RUN_BEGIN_ATOMICITY=SINGLE_DB_COMMAND
 SCOPE_OUTCOME_ATOMICITY=SCOPE_AND_FAILURES_SINGLE_DB_TRANSACTION
 RUN_FINALIZATION_ATOMICITY=SINGLE_DB_COMMAND
 WHOLE_RUN_DATABASE_TRANSACTION=PROHIBITED
+
+RUN_VERSION_SEMANTICS=LIFECYCLE_ONLY
+RUN_VERSION_INITIAL=1
+RUN_VERSION_SCOPE_OUTCOME_INCREMENT=false
+RUN_VERSION_SCOPE_EXACT_REPLAY_DELTA=0
+RUN_VERSION_SCOPE_CONFLICT_DELTA=0
+RUN_SCOPE_RECORD_PARENT_LOCK=FOR_UPDATE
+RUN_FINALIZE_PARENT_LOCK=FOR_UPDATE
+RUN_FINALIZATION_SCOPE_FREEZE=SHARED_PARENT_ROW_LOCK
+RUN_FINALIZE_EXPECTED_VERSION_SOURCE=BEGIN_RESULT_VERSION
+RUN_FINALIZE_SUCCESS_VERSION_INCREMENT=1
+RUN_VERSION_FIRST_TERMINAL=2
+RUN_VERSION_FINALIZE_EXACT_REPLAY_DELTA=0
+RUN_VERSION_FINALIZE_CONFLICT_DELTA=0
+SCOPE_WRITE_INCREMENTS_RUN_VERSION=REJECTED
 ```
 
-Begin creates version `1`. Finalize uses expected-version CAS and rejects stale
-writers. Scope persistence may increment run version only if the migration
-makes the returned expected-version contract explicit; otherwise finalization
-derives it from command results. Either choice forbids last-write-wins.
+Run version is a lifecycle-only optimistic version, not a child mutation count.
+Begin creates `RUNNING` at version `1`. Any number of successful scope outcome
+records, binding failure records, exact scope replays, or conflicting scope
+replays leave the parent run version unchanged. The child identities and their
+exact/conflicting replay rules protect scope idempotency independently.
+
+The scope-record command first takes the parent run row lock with `FOR UPDATE`,
+then verifies a `RUNNING` parent, validates scope and binding failures, and
+inserts scope plus failures atomically. It does not update the parent version.
+
+Finalize takes the same parent row lock before aggregate validation. Its
+expected version is the lifecycle version returned by begin (or the current
+version returned by exact begin replay), not a chain reconstructed from scope
+commands. A normal run therefore finalizes with `expected_version=1`; the
+first successful terminal transition sets terminal fields and increments version
+exactly once to `2`. A stale `RUNNING` expected version fails as
+`RUN_VERSION_CONFLICT` without durable mutation.
+
+Exact terminal replay returns the existing terminal state without changing
+version or timestamps. A different terminal status, terminal code, or typed
+summary is a conflicting replay and leaves the durable row unchanged. Terminal
+to terminal transition and last-write-wins remain prohibited.
+
+The shared parent row lock freezes scope persistence during finalization. If a
+scope command commits first, finalization sees that durable evidence. If
+finalization commits first, a later scope command obtains the lock, observes a
+terminal parent, and rejects without a scope/failure row. Concurrent scopes use
+the same parent lock for `RUNNING` validation but do not serialize through a
+parent version update.
+
+`SCOPE_WRITE_INCREMENTS_RUN_VERSION` is rejected because per-scope parent
+updates would couple child idempotency to lifecycle state, introduce needless
+write serialization across concurrent providers, and require callers to track
+out-of-order scope command versions.
 
 ## 14. Selected Runtime Integration
 
@@ -393,4 +438,3 @@ Staging, commit, push, remote branch creation, and pull request creation are
 not performed by this task.
 
 FINAL_STATUS=PASS_CUSTODY_BALANCE_OBSERVER_RUN_LEDGER_CONTRACT_READY
-
