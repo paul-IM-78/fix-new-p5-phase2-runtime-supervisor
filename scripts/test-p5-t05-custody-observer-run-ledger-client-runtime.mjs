@@ -23,6 +23,7 @@ const IDS = {
   assetB: "00000000-0000-4000-8000-000000750102",
   provider: "00000000-0000-4000-8000-000000750201",
   binding: "00000000-0000-4000-8000-000000750301",
+  bindingB: "00000000-0000-4000-8000-000000750302",
 };
 
 let cases = 0;
@@ -55,6 +56,7 @@ async function main() {
     clients.add(client);
     await assertRealLifecycle(client);
     await assertInputValidation(clientModule);
+    await assertFailureEvidenceCardinality(clientModule);
     await assertHostileResults(clientModule);
     await assertErrorMapping(clientModule);
     await assertPoolLifecycle(clientModule);
@@ -127,7 +129,8 @@ values ('${IDS.assetA}', 'P5T05_CLIENT_A', 'P5A', 'P5 T05 Client Asset A', 'NATI
 insert into private.custody_providers (id, provider_code, display_name, provider_type, supports_balance_observation, supports_transfer_observation, supports_transfer_lookup, supports_payout_submission, supports_webhook_ingestion)
 values ('${IDS.provider}', 'P5T05_CLIENT_PROVIDER', 'P5 T05 Client Provider', 'MPC_CUSTODIAN', true, false, false, false, false);
 insert into private.custody_account_bindings (id, custody_provider_id, asset_id, binding_key, display_label, account_role)
-values ('${IDS.binding}', '${IDS.provider}', '${IDS.assetB}', 'p5t05_client_failure', 'P5 T05 Client Failure', 'COLLECTION');`);
+values ('${IDS.binding}', '${IDS.provider}', '${IDS.assetB}', 'p5t05_client_failure', 'P5 T05 Client Failure', 'COLLECTION'),
+       ('${IDS.bindingB}', '${IDS.provider}', '${IDS.assetB}', 'p5t05_client_abort', 'P5 T05 Client Abort', 'FEE');`);
   pass("Synthetic DB fixtures");
 }
 
@@ -180,7 +183,26 @@ async function assertRealLifecycle(client) {
   assert(!finalReplay.finalized && finalReplay.version === "2" && finalReplay.completedAt === final.completedAt, "Finalize exact replay"); pass("Real finalize exact replay");
   await expectClientError(() => client.finalizeBalanceObserverRun({ runId: begin.runId, expectedVersion: begin.version, terminalStatus: "COMPLETED", terminalCode: null, summary }), "RUN_LEDGER_FINALIZATION_CONFLICT", "Finalize conflict"); pass("Real finalize conflict");
   await expectClientError(() => client.recordBalanceObserverScopeOutcome(noFailure), "RUN_LEDGER_NOT_RUNNING", "Late scope rejection"); pass("Real late scope rejection");
+  await assertRealFailureEvidenceWrites(client);
   pass("BEGIN_RETURNED_VERSION=1"); pass("SCOPE_RECORD_VERSION_DELTA=0"); pass("SCOPE_REPLAY_VERSION_DELTA=0"); pass("SCOPE_CONFLICT_VERSION_DELTA=0"); pass("FINALIZE_EXPECTED_VERSION_USED=BEGIN_RESULT_VERSION"); pass("FIRST_TERMINAL_VERSION=2"); pass("FINALIZE_REPLAY_VERSION_DELTA=0"); pass("FINALIZE_CONFLICT_VERSION_DELTA=0");
+}
+
+async function assertRealFailureEvidenceWrites(client) {
+  const abortedRun = await client.beginBalanceObserverRun({ runKey: "obsrun:v1:00000000-0000-4000-8000-000000750902", triggerSource: "MANUAL", identityPolicy: "LOCAL_MOCK", invocationContractVersion: "P5_T05_V1" });
+  const aborted = abortedScopeInput(abortedRun.runId, IDS.assetB);
+  const abortedWrite = await client.recordBalanceObserverScopeOutcome(aborted);
+  const abortedReplay = await client.recordBalanceObserverScopeOutcome(aborted);
+  assert(abortedWrite.created && !abortedReplay.created, "Real ABORTED-only scope write and replay");
+  assert((await adminScalar(`select concat_ws('|', scope.binding_failure_count::text, scope.binding_abort_count::text, (select count(*)::text from private.custody_balance_observer_binding_failures as failure where failure.run_id = scope.run_id), run.version::text) from private.custody_balance_observer_scope_outcomes as scope join private.custody_balance_observer_runs as run on run.run_id = scope.run_id where scope.run_id = '${abortedRun.runId}'`)) === "0|1|1|1", "Real ABORTED-only durable scope state");
+  pass("CLIENT_REAL_DB_ABORTED_ONLY_SCOPE_WRITE=PASS");
+  pass("CLIENT_REAL_DB_ABORTED_ONLY_EXACT_REPLAY=PASS");
+  pass("CLIENT_SCOPE_WRITE_VERSION_DELTA=0");
+
+  const mixedRun = await client.beginBalanceObserverRun({ runKey: "obsrun:v1:00000000-0000-4000-8000-000000750903", triggerSource: "MANUAL", identityPolicy: "LOCAL_MOCK", invocationContractVersion: "P5_T05_V1" });
+  const mixed = scopeInput(mixedRun.runId, IDS.assetB, [bindingFailure(), bindingAbort(IDS.bindingB, 1)], { bindingFailureCount: "1", bindingAbortCount: "1", scopeStatus: "PARTIAL", scopeCode: "SCOPE_PARTIAL" });
+  assert((await client.recordBalanceObserverScopeOutcome(mixed)).created, "Real mixed scope write");
+  assert((await adminScalar(`select concat_ws('|', scope.binding_failure_count::text, scope.binding_abort_count::text, (select count(*)::text from private.custody_balance_observer_binding_failures as failure where failure.run_id = scope.run_id), run.version::text) from private.custody_balance_observer_scope_outcomes as scope join private.custody_balance_observer_runs as run on run.run_id = scope.run_id where scope.run_id = '${mixedRun.runId}'`)) === "1|1|2|1", "Real mixed durable scope state");
+  pass("CLIENT_REAL_DB_MIXED_SCOPE_WRITE=PASS");
 }
 
 async function assertInputValidation(module) {
@@ -199,6 +221,29 @@ async function assertInputValidation(module) {
   await expectClientError(() => client.recordBalanceObserverScopeOutcome({ ...scopeInput("00000000-0000-4000-8000-000000750999", IDS.assetB, [bindingFailure(), bindingFailure()]) }), "RUN_LEDGER_INPUT_INVALID", "Duplicate failure binding");
   await expectClientError(() => client.finalizeBalanceObserverRun({ runId: "bad", expectedVersion: "0", terminalStatus: "RUNNING", terminalCode: null, summary: terminalSummary() }), "RUN_LEDGER_INPUT_INVALID", "Invalid finalize input");
   assert(queries === 0, "Invalid input query count zero"); pass("Invalid inputs perform zero queries");
+}
+
+async function assertFailureEvidenceCardinality(module) {
+  let queries = 0;
+  const client = module.createBalanceObserverRunLedgerClient(config(module), { createPool: () => fakePool(() => { queries += 1; return { rows: [{ created: true }] }; }) });
+  clients.add(client);
+  const runId = "00000000-0000-4000-8000-000000750998";
+  const aborted = abortedScopeInput(runId, IDS.assetB);
+  await client.recordBalanceObserverScopeOutcome(aborted);
+  pass("CLIENT_ABORTED_ONLY_INPUT_ACCEPTED=PASS");
+  const failed = scopeInput(runId, IDS.assetB, [bindingFailure()]);
+  await client.recordBalanceObserverScopeOutcome(failed);
+  pass("CLIENT_FAILED_ONLY_INPUT_ACCEPTED=PASS");
+  const mixed = scopeInput(runId, IDS.assetB, [bindingFailure(), bindingAbort(IDS.bindingB, 1)], { bindingFailureCount: "1", bindingAbortCount: "1" });
+  await client.recordBalanceObserverScopeOutcome(mixed);
+  pass("CLIENT_MIXED_FAILED_ABORTED_INPUT_ACCEPTED=PASS");
+  const queryCountBeforeRejections = queries;
+  await expectClientError(() => client.recordBalanceObserverScopeOutcome({ ...mixed, failures: [bindingFailure()] }), "RUN_LEDGER_INPUT_INVALID", "Too-few failure evidence");
+  assert(queries === queryCountBeforeRejections, "Too-few failure evidence query count zero");
+  pass("CLIENT_TOO_FEW_FAILURE_EVIDENCE_REJECTED=PASS");
+  await expectClientError(() => client.recordBalanceObserverScopeOutcome({ ...aborted, failures: [bindingAbort(), bindingAbort(IDS.bindingB, 1)] }), "RUN_LEDGER_INPUT_INVALID", "Too-many failure evidence");
+  assert(queries === queryCountBeforeRejections, "Too-many failure evidence query count zero");
+  pass("CLIENT_TOO_MANY_FAILURE_EVIDENCE_REJECTED=PASS");
 }
 
 async function assertHostileResults(module) {
@@ -231,8 +276,10 @@ async function assertPoolLifecycle(module) {
 
 function injectedClient(module, rows) { return module.createBalanceObserverRunLedgerClient(config(module), { createPool: () => fakePool(() => ({ rows })) }); }
 function fakePool(query, end = async () => {}) { return { query: async () => query(), end: async () => end(), on: () => undefined }; }
-function scopeInput(runId, assetId, failures) { return { runId, discoveryIndex: assetId === IDS.assetA ? 0 : 1, providerId: IDS.provider, assetId, scopeStatus: failures.length ? "PARTIAL" : "SUCCEEDED", bindingSuccessCount: failures.length ? "0" : "0", bindingFailureCount: String(failures.length), bindingAbortCount: "0", refreshRequested: false, refreshAttempted: false, refreshSucceeded: false, refreshFailed: false, noLongerEligibleCount: "0", scopeCode: failures.length ? "SCOPE_PARTIAL" : null, failures }; }
+function scopeInput(runId, assetId, failures, overrides = {}) { return { runId, discoveryIndex: assetId === IDS.assetA ? 0 : 1, providerId: IDS.provider, assetId, scopeStatus: failures.length ? "PARTIAL" : "SUCCEEDED", bindingSuccessCount: "0", bindingFailureCount: String(failures.length), bindingAbortCount: "0", refreshRequested: false, refreshAttempted: false, refreshSucceeded: false, refreshFailed: false, noLongerEligibleCount: "0", scopeCode: failures.length ? "SCOPE_PARTIAL" : null, failures, ...overrides }; }
 function bindingFailure() { return { bindingId: IDS.binding, bindingOrder: 0, stage: "DATABASE", code: "DB_RETRY_EXHAUSTED", retryable: true, adapterAttempts: "1", databaseAttempts: "2", retryExhausted: true, retryDeferred: false, requiresScopeRefresh: false }; }
+function bindingAbort(bindingId = IDS.binding, bindingOrder = 0) { return { bindingId, bindingOrder, stage: "ABORTED", code: "ORCHESTRATOR_ABORTED", retryable: false, adapterAttempts: "0", databaseAttempts: "0", retryExhausted: false, retryDeferred: false, requiresScopeRefresh: false }; }
+function abortedScopeInput(runId, assetId) { return scopeInput(runId, assetId, [bindingAbort()], { scopeStatus: "ABORTED", bindingFailureCount: "0", bindingAbortCount: "1", scopeCode: "ORCHESTRATOR_ABORTED" }); }
 function terminalSummary() { return { pagesRead: "1", scopesDiscovered: "2", providersDiscovered: "1", bindingsDiscovered: "1", scopesStarted: "2", scopesCompleted: "1", scopesFailed: "1", scopesAborted: "0", bindingsSucceeded: "0", bindingsFailed: "1", bindingsAborted: "0", adapterFactoryCalls: "1", adapterFactoryFailures: "0", scopeRefreshRequested: "0", scopeRefreshAttempted: "0", scopeRefreshSucceeded: "0", scopeRefreshFailed: "0", scopeNoLongerEligible: "0", scopeReadAttempts: "2", scopeReadRetryAttempts: "0", workerAdapterAttempts: "1", workerDatabaseAttempts: "2", workerAdapterRetryAttempts: "0", workerDatabaseRetryAttempts: "0", clientCloseAttempts: "1", clientCloseFailures: "0" }; }
 function uuid(value) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(value); }
 async function expectClientError(fn, expected, label) { try { await fn(); } catch (error) { assert(error?.message === "custody_balance_observer_run_ledger_client_failed", label); if (expected) assert(error?.code === expected, label); return; } throw new Error(`FAIL ${label}`); }
@@ -242,6 +289,7 @@ function expectThrows(fn, label) { try { fn(); } catch { return; } throw new Err
 async function setRolePassword(password) { await adminSql(`alter role ${RUN_WRITER_ROLE} password '${password}';`); pass("Ephemeral run-writer credential set"); }
 async function clearRolePassword() { if (ephemeralPassword !== null) { await adminSql(`alter role ${RUN_WRITER_ROLE} password null;`).catch(() => undefined); ephemeralPassword = null; pass("Ephemeral run-writer credential cleared"); } }
 async function adminSql(sql) { await runChild("docker", ["exec", "-i", DB_CONTAINER, "psql", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", DB_NAME], sql, 30000); }
+async function adminScalar(sql) { return (await runChildOutput("docker", ["exec", "-i", DB_CONTAINER, "psql", "-At", "-v", "ON_ERROR_STOP=1", "-U", "postgres", "-d", DB_NAME], sql, 30000)).trim(); }
 async function runNpm(script, label, timeout) { const command = process.platform === "win32" ? "cmd.exe" : "npm"; const args = process.platform === "win32" ? ["/c", "npm", "--silent", "run", script] : ["run", script]; await runChild(command, args, null, timeout); pass(label); }
 async function cleanupDb() { await runNpm("db:reset:local", "Final DB reset", 180000).catch(() => undefined); await runNpm("supabase:stop", "Supabase stop", 120000).catch(() => undefined); }
 async function closeClients() { for (const client of clients) await client.close().catch(() => undefined); clients.clear(); }
@@ -255,6 +303,7 @@ function assertSafeOutput() { const output = lines.join("\n"); assert(!/eyJ[A-Za
 function assert(condition, label) { if (!condition) throw new Error(`FAIL ${label}`); }
 function pass(label) { cases += 1; lines.push(`PASS ${label}`); console.log(`PASS ${label}`); }
 async function runChild(command, args, input, timeout) { return new Promise((resolve, reject) => { const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }); const timer = setTimeout(() => { child.kill(); reject(new Error(`FAIL ${command} timeout`)); }, timeout); const errors = []; child.stderr.on("data", (chunk) => errors.push(Buffer.from(chunk))); child.on("error", reject); child.on("close", (code) => { clearTimeout(timer); if (code === 0) resolve(); else reject(new Error(`FAIL ${command} exited ${code}: ${redact(Buffer.concat(errors).toString("utf8"))}`)); }); if (input === null) child.stdin.end(); else child.stdin.end(input); }); }
+async function runChildOutput(command, args, input, timeout) { return new Promise((resolve, reject) => { const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true }); const timer = setTimeout(() => { child.kill(); reject(new Error(`FAIL ${command} timeout`)); }, timeout); const output = []; const errors = []; child.stdout.on("data", (chunk) => output.push(Buffer.from(chunk))); child.stderr.on("data", (chunk) => errors.push(Buffer.from(chunk))); child.on("error", reject); child.on("close", (code) => { clearTimeout(timer); if (code === 0) resolve(Buffer.concat(output).toString("utf8")); else reject(new Error(`FAIL ${command} exited ${code}: ${redact(Buffer.concat(errors).toString("utf8"))}`)); }); child.stdin.end(input); }); }
 function redact(value) { return value.replace(/postgres(?:ql)?:\/\/\S+/gi, "[REDACTED]").replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[REDACTED]"); }
 
 main().catch((error) => { console.error(redact(error instanceof Error ? error.message : "FAIL unknown")); process.exitCode = 1; });

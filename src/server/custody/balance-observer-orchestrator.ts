@@ -184,6 +184,12 @@ export type CustodyBalanceObserverOrchestratorRuntime = {
   runWorkUnit?: typeof runCustodyBalanceObserverWorkUnit;
 };
 
+export type CustodyBalanceObserverLifecycleReporter = {
+  onScopeFinalized(
+    outcome: CustodyBalanceObserverOrchestratorScopeOutcome,
+  ): Promise<void>;
+};
+
 export type RunCustodyBalanceObserverOneShotInput = {
   scopeClient: CustodyBalanceObserverScopeClient;
   commandClient: CustodyBalanceObserverCommandClient;
@@ -197,6 +203,7 @@ export type RunCustodyBalanceObserverOneShotInput = {
   pageLimit?: number;
   maxDiscoveryPages?: number;
   runtime?: CustodyBalanceObserverOrchestratorRuntime;
+  lifecycleReporter?: CustodyBalanceObserverLifecycleReporter;
   signal?: AbortSignal;
 };
 
@@ -213,6 +220,11 @@ type ValidatedRunInput = {
   pageLimit: number;
   maxDiscoveryPages: number;
   runWorkUnit: typeof runCustodyBalanceObserverWorkUnit;
+  lifecycleReporter?: CustodyBalanceObserverLifecycleReporter;
+  reporterAbort?: AbortController;
+  reporterState?: {
+    failed: boolean;
+  };
   signal?: AbortSignal;
 };
 
@@ -292,21 +304,33 @@ export async function runCustodyBalanceObserverOneShot(
   input: RunCustodyBalanceObserverOneShotInput,
 ): Promise<CustodyBalanceObserverOneShotResult> {
   const validated = validateInput(input);
+  const reporterAbort = validated.lifecycleReporter
+    ? new AbortController()
+    : undefined;
+  const reporterState = validated.lifecycleReporter ? { failed: false } : undefined;
+  const signalBridge = bridgeAbortSignal(validated.signal, reporterAbort);
+  const executionInput: ValidatedRunInput = {
+    ...validated,
+    reporterAbort,
+    reporterState,
+    signal: reporterAbort?.signal ?? validated.signal,
+  };
   const summary = createEmptySummary();
   let terminal: TerminalResult | null = null;
 
   try {
-    if (validated.signal?.aborted) {
+    if (executionInput.signal?.aborted) {
       terminal = {
         status: "ABORTED",
         code: "ORCHESTRATOR_ABORTED",
         outcomes: [],
       };
     } else {
-      terminal = await executeOneShot(validated, summary);
+      terminal = await executeOneShot(executionInput, summary);
     }
   } finally {
-    await closeOwnedClients(validated, summary);
+    signalBridge?.dispose();
+    await closeOwnedClients(executionInput, summary);
   }
 
   const result = finalizeResult(terminal, summary);
@@ -362,7 +386,9 @@ async function executeOneShot(
   if (input.signal?.aborted) {
     for (const scope of discovery.scopes) {
       if (!outcomes[scope.discoveryIndex]) {
-        outcomes[scope.discoveryIndex] = abortedScopeOutcome(scope);
+        const outcome = abortedScopeOutcome(scope);
+        outcomes[scope.discoveryIndex] = outcome;
+        await reportFinalScopeOutcome(input, outcome);
       }
     }
   }
@@ -666,7 +692,9 @@ async function executeProviderGroup(
 ): Promise<void> {
   if (input.signal?.aborted) {
     for (const scope of group.scopes) {
-      outcomes[scope.discoveryIndex] = abortedScopeOutcome(scope);
+      const outcome = abortedScopeOutcome(scope);
+      outcomes[scope.discoveryIndex] = outcome;
+      await reportFinalScopeOutcome(input, outcome);
     }
 
     return;
@@ -680,11 +708,14 @@ async function executeProviderGroup(
   } catch {
     summary.adapterFactoryFailures += 1;
     for (const scope of group.scopes) {
-      outcomes[scope.discoveryIndex] = failedScopeOutcome(
+      const outcome = failedScopeOutcome(
         scope,
         "ADAPTER_FACTORY_FAILED",
         "FACTORY",
       );
+      outcomes[scope.discoveryIndex] = outcome;
+      await reportFinalScopeOutcome(input, outcome);
+      if (input.signal?.aborted) return;
     }
 
     return;
@@ -693,11 +724,14 @@ async function executeProviderGroup(
   if (!isAdapterForProvider(adapter, group.provider)) {
     summary.adapterFactoryFailures += 1;
     for (const scope of group.scopes) {
-      outcomes[scope.discoveryIndex] = failedScopeOutcome(
+      const outcome = failedScopeOutcome(
         scope,
         "ADAPTER_FACTORY_RESULT_INVALID",
         "FACTORY",
       );
+      outcomes[scope.discoveryIndex] = outcome;
+      await reportFinalScopeOutcome(input, outcome);
+      if (input.signal?.aborted) return;
     }
 
     return;
@@ -705,16 +739,38 @@ async function executeProviderGroup(
 
   for (const scope of group.scopes) {
     if (input.signal?.aborted) {
-      outcomes[scope.discoveryIndex] = abortedScopeOutcome(scope);
+      const outcome = abortedScopeOutcome(scope);
+      outcomes[scope.discoveryIndex] = outcome;
+      await reportFinalScopeOutcome(input, outcome);
       continue;
     }
 
-    outcomes[scope.discoveryIndex] = await executeScope(
+    const outcome = await executeScope(
       input,
       summary,
       scope,
       adapter,
     );
+    outcomes[scope.discoveryIndex] = outcome;
+    await reportFinalScopeOutcome(input, outcome);
+  }
+}
+
+async function reportFinalScopeOutcome(
+  input: ValidatedRunInput,
+  outcome: CustodyBalanceObserverOrchestratorScopeOutcome,
+): Promise<void> {
+  if (!input.lifecycleReporter || input.reporterState?.failed) {
+    return;
+  }
+
+  try {
+    await input.lifecycleReporter.onScopeFinalized(outcome);
+  } catch {
+    if (input.reporterState) {
+      input.reporterState.failed = true;
+    }
+    input.reporterAbort?.abort();
   }
 }
 
@@ -1241,6 +1297,17 @@ function validateInput(
     );
   }
 
+  if (
+    input.lifecycleReporter !== undefined &&
+    (!isRecord(input.lifecycleReporter) ||
+      typeof input.lifecycleReporter.onScopeFinalized !== "function")
+  ) {
+    throw new CustodyBalanceObserverOrchestratorError(
+      "ORCHESTRATOR_INPUT_INVALID",
+      false,
+    );
+  }
+
   const providerConcurrency = validateInteger(
     input.concurrencyPolicy?.providerConcurrency ?? DEFAULT_PROVIDER_CONCURRENCY,
     1,
@@ -1311,7 +1378,28 @@ function validateInput(
     pageLimit,
     maxDiscoveryPages,
     runWorkUnit: input.runtime?.runWorkUnit ?? runCustodyBalanceObserverWorkUnit,
+    lifecycleReporter: input.lifecycleReporter,
     signal: input.signal,
+  };
+}
+
+function bridgeAbortSignal(
+  source: AbortSignal | undefined,
+  target: AbortController | undefined,
+): { dispose(): void } | undefined {
+  if (!source || !target) return undefined;
+
+  const abort = () => target.abort();
+  if (source.aborted) {
+    abort();
+    return undefined;
+  }
+
+  source.addEventListener("abort", abort, { once: true });
+  return {
+    dispose() {
+      source.removeEventListener("abort", abort);
+    },
   };
 }
 

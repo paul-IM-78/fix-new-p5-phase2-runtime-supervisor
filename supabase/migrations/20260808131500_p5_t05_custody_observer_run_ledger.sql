@@ -285,7 +285,7 @@ begin
     or coalesce(cardinality(p_failure_retry_exhausted), 0) <> v_count
     or coalesce(cardinality(p_failure_retry_deferred), 0) <> v_count
     or coalesce(cardinality(p_failure_requires_scope_refresh), 0) <> v_count
-    or p_binding_failure_count <> v_count
+    or p_binding_failure_count + p_binding_abort_count <> v_count
   then raise exception 'run_binding_failure_invalid' using errcode = '22023'; end if;
 
   if exists (
