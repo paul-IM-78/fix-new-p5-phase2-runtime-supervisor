@@ -618,6 +618,10 @@ export type Database = {
           withdrawal_request_id: string
         }[]
       }
+      get_admin_custody_observer_run_detail: {
+        Args: { p_cutoff: string; p_run_id: string }
+        Returns: Json
+      }
       get_admin_reconciliation_item_detail: {
         Args: { p_reconciliation_item_id: string }
         Returns: {
@@ -664,6 +668,19 @@ export type Database = {
           updated_at: string
           version: number
         }[]
+      }
+      list_admin_custody_observer_runs: {
+        Args: {
+          p_alert_eligible?: boolean
+          p_before_created_at?: string
+          p_before_run_id?: string
+          p_cutoff: string
+          p_limit: number
+          p_severity?: string
+          p_stale?: boolean
+          p_status?: string
+        }
+        Returns: Json
       }
       list_admin_custody_providers: {
         Args: { p_limit?: number; p_status?: string }
