@@ -138,7 +138,10 @@ Real provider credential use, external BitGo TEST reads, external DNS/TLS qualif
 
 - Reason: the staged whitespace gate found one trailing-whitespace defect in qualified harness line 89.
 - Correction: trailing whitespace removed only. Semantic change: false.
+- Historical pre-whitespace harness identity: `16597` bytes, `C39A7B6C76C5ABD362575099EF26B6CC1140D1624847106B3E81031EBC1E22A0`; it is historical only and is not a current repository file.
 - Previous qualified snapshot: `9BA3F0F97EBC52CE1B8332A4289F63E16C39F1FEE523916C5C863574BB17973E`
+- 7B forensically reproduced the historical harness in memory only by restoring one trailing ASCII space (`0x20`) immediately before the LF on line 89, without mutating a repository file.
+- Removing that one byte preserves LF line endings and yields the current qualified post-whitespace harness: `16596` bytes, `6373118EA75F2577220A7134A0AD05DD032F1E55948F1CC6B9DBDD663D7990FD`.
 - New qualified snapshot: `AA31AA81A346E48A5C9647EB0A3FC292ABFB293EE8481DD4651FDEB9ED0E7CBA`
 - Focused qualification: 66/66 PASS. TypeScript: PASS. Lint: PASS. Build: PASS.
 - External DNS/TLS/HTTP/socket: 0. BitGo/Solana calls: 0. Actual credentials/reads: 0. Fake-secret leaks: 0.

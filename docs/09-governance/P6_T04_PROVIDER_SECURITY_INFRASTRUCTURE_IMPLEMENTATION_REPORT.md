@@ -56,7 +56,10 @@ C7A2666259397DFEE60BA35A1104C19789B27CC1A813F5E7E0CDB1D213212FCB  src/server/pro
 - Corrected file: `scripts/test-p6-t04-provider-security-infrastructure-runtime.mjs`
 - Corrected line: 89
 - Source modules changed: 0. Harness semantic behavior changed: false.
+- Historical pre-whitespace harness identity: `16597` bytes, `C39A7B6C76C5ABD362575099EF26B6CC1140D1624847106B3E81031EBC1E22A0`; it is not a current repository file.
 - Pre-correction authoritative snapshot: `9BA3F0F97EBC52CE1B8332A4289F63E16C39F1FEE523916C5C863574BB17973E`
+- 7B forensically reproduced that historical identity in memory only by restoring one trailing ASCII space (`0x20`) immediately before the LF on line 89, without mutating a repository file.
+- Removing that one byte preserves LF line endings and yields the current post-whitespace harness: `16596` bytes, `6373118EA75F2577220A7134A0AD05DD032F1E55948F1CC6B9DBDD663D7990FD`.
 - New authoritative snapshot: `AA31AA81A346E48A5C9647EB0A3FC292ABFB293EE8481DD4651FDEB9ED0E7CBA`
 - Post-correction formal qualification: PASS. Real credential, network, and provider execution: 0.
 
