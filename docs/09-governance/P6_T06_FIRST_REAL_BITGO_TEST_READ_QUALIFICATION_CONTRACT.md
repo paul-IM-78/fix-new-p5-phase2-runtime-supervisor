@@ -83,9 +83,51 @@ The future runner accepts one later-injected environment slot, `BITGO_TEST_WALLE
 
 The intended future token scope is only `wallet_view:<walletId>`. Broad viewing, wallet spend, wallet manage, transaction, transfer, address, policy, webhook, administrative, user-management, and any other scope are prohibited.
 
-Token provisioning is user-controlled and out of band. This task does not create, request, read, activate, paste, rotate, revoke, inspect, or transmit a token. In particular, it prohibits `POST /api/v2/user/accesstoken`, login automation, OTP automation, token extraction, and token disclosure in chat.
+Token provisioning is user-controlled and out of band. The P6-T06 runner and application path do not create, request, read, activate, paste, rotate, revoke, inspect, or transmit a token. They prohibit `POST /api/v2/user/accesstoken`, login automation, OTP automation, token extraction, and token disclosure in chat, except for the separately governed prerequisite defined in the amendment below.
 
 The future runtime secret slot is `BITGO_TEST_ACCESS_TOKEN`. Only the P6-T04 credential resolver may resolve it. The future runner and P6-T05 adapter must not read it directly, serialize it, construct an Authorization header, log it, hash it, or expose it to a test harness.
+
+### P6-T06 Token Provisioning Prerequisite Amendment
+
+- Prior canonical contract SHA-256: `577C67F07780EBF26DDA902B235DCFEFFEAD74902928B5700E955728D6FBF359`
+- Prior canonical merge SHA: `376c5c55dc2089a85e5a39e543911609ec3a4d16`
+- Reopen governance: `P6_T06_CONTRACT_REOPEN_GOVERNANCE_DEFINED`
+- Reopen reason: `CURRENT_BITGO_WEB_UI_DOES_NOT_EXPOSE_FROZEN_WALLET_SPECIFIC_VIEW_SCOPE_AND_CANONICAL_CONTRACT_BLOCKS_OFFICIAL_MANUAL_API_PROVISIONING`
+- Amendment scope: `TOKEN_PROVISIONING_PREREQUISITE_ONLY`
+- Target semantic: `P6_T06_MANUAL_TEST_TOKEN_PROVISIONING_PREREQUISITE_ALLOWED_BUT_REAL_READ_NOT_AUTHORIZED`
+
+`OPERATOR_CONTROLLED_TEST_TOKEN_PROVISIONING` is a separately governed prerequisite action performed directly by an authorized operator outside the P6-T06 qualification runner and application path. It may use only the BitGo TEST authentication and token-management endpoints necessary to obtain one least-privilege P6-T06 qualification credential. It is not qualification execution, wallet observation, balance observation, runner behavior, application integration, unattended provisioning, or production provisioning.
+
+The runner, application code, Codex-controlled processes, repository scripts, and services MUST NOT create tokens. Automated or unattended provisioning and production token creation remain prohibited. A separately authorized `OPERATOR_CONTROLLED_TEST_TOKEN_PROVISIONING` step MAY invoke the BitGo TEST Create Access Token endpoint exactly once. This amendment alone does not authorize that provisioning step.
+
+Runner login, application login, Codex-controlled login, unattended login, automated login, and production login are prohibited. A separately authorized operator-controlled local TEST provisioning step MAY perform only the minimum manual TEST authentication required to obtain short-lived authorization for token creation. OTP automation, script reading or generation of OTP, Codex receipt of OTP, and governance output containing OTP are prohibited. The operator may manually enter authentication material locally only when separately authorized.
+
+When separately authorized, provisioning may use only the BitGo TEST authentication endpoint necessary for short-lived authorization and the BitGo TEST Create Access Token endpoint. It MUST NOT call `GET /api/v2/tsol/wallet/{walletId}`, wallet-listing, balance, transaction, withdrawal, address-generation, staking, Solana RPC, or production endpoints. No provider wallet-read authority is created.
+
+- `LOGIN_LOGICAL_PROVISIONING_ATTEMPTS_MAX = 1`
+- `CREATE_TOKEN_LOGICAL_PROVISIONING_ATTEMPTS_MAX = 1`
+- Automatic retry and immediate manual retry under the same provisioning authorization are prohibited.
+- Any provisioning failure requires `STOP_FOR_GOVERNANCE_REVIEW`.
+- Token provisioning does not consume `MAX_LOGICAL_QUALIFICATION_INVOCATIONS`; after either provisioning success or failure, the qualification-read budget remains `1 / 0 / 1`.
+
+The primary token scope remains exactly `wallet_view:<authorizedWalletId>`. `wallet_view_all`, `wallet_view_enterprise`, `all`, and any broader wallet-view authority are prohibited. `permittedWallets` MUST NOT substitute for the primary scope requirement. The token must have `admin = false`; wallet spend, manage, create, edit, approve, freeze, stake, trade execution, settlement write, enterprise administration, and production authority are prohibited.
+
+- `MAX_QUALIFICATION_TOKEN_DURATION_SECONDS = 86400` (24 hours maximum). A duration rejection requires `STOP_FOR_GOVERNANCE_REVIEW`; it must not be increased automatically.
+- TEST qualification-token IP restriction is optional. Its absence alone does not invalidate P6-T06 and has no production-policy implication.
+
+Account identifier or email, password, OTP, short-lived authentication token, long-lived qualification token, Authorization header, and raw token-creation response are protected secret material. They MUST NOT enter ChatGPT, Codex-visible output, Git, repository files, reports, stdout, stderr, or persistent logs.
+
+Authorized provisioning, if later granted, occurs only in a dedicated operator-controlled local process or session. Secret input is manual only and secret storage is process or session memory only. `.env`, repository secret files, and permanent user or machine environment persistence are prohibited unless separately re-governed.
+
+`SHORT_LIVED_TOKEN_TRANSIENT_ONLY` applies: the short-lived token is never printed or persisted, is used only for one token-creation request, is cleared immediately afterward, is never passed to the P6-T06 runner, and is never assigned to `BITGO_TEST_ACCESS_TOKEN`. The resulting least-privilege qualification token may be placed directly into `BITGO_TEST_ACCESS_TOKEN` only inside the dedicated operator session. It is never printed, persisted, sent to governance, or raw-response serialized; temporary response and token intermediaries are cleared. P6-T04 credential resolution MUST NOT be invoked during provisioning.
+
+The separately authorized operator process MAY validate locally and in memory that the returned scope equals the exact expected wallet-specific scope and, if exposed, that `admin == false`. Governance output may contain only sanitized confirmations such as `TOKEN_SCOPE_EXACT=CONFIRMED` and `TOKEN_ADMIN_FALSE=CONFIRMED`; no raw token or raw scope representation containing a wallet identifier may be persisted.
+
+Authentication failure, token-creation failure, scope mismatch, admin mismatch, or secret-handling failure requires a stop, transient-secret cleanup where possible, no broader UI-permission fallback, no retry, and no qualification-runner execution. The BitGo web UI exposing `Wallet - View all` does not authorize its use for P6-T06.
+
+For this amendment, out of band means outside the qualification runner and application path, under direct operator control, and separately governed. It does not require zero network activity and does not permit unattended automation. The runner command `node --conditions=react-server scripts/qualify-p6-t06-first-bitgo-test-read.mjs` MUST NOT log in, create or refresh tokens, inspect token scope, receive password or OTP, accept token-creation parameters, or perform provisioning retries. It continues to consume only the symbolic credential reference through canonical P6-T04 during a later explicitly authorized real execution.
+
+Successful provisioning alone does not authorize the P6-T06 runner, P6-T04 credential resolver, wallet GET, balance observation, provider DNS/TLS/HTTP for the qualification read, production, writes, or signing. A later explicit execution authorization remains mandatory.
 
 ## Required Future Runner
 
@@ -231,7 +273,7 @@ Successful execution creates no successor task ID and grants no normal runtime i
 17. Token scope is narrowed to the intended wallet-view template.
 18. Broad view scope is prohibited.
 19. Spend and management scope are prohibited.
-20. Token creation endpoint use is prohibited.
+20. Runner and application token-creation endpoint use is prohibited; only the separately governed operator-controlled TEST prerequisite may be authorized.
 21. Login and OTP automation are prohibited.
 22. Token disclosure in chat is prohibited.
 23. The runtime token slot is named without a value.
