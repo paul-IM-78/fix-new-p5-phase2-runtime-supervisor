@@ -6,6 +6,17 @@ Classification: `PHASE6_BITGO_READ_ONLY_BALANCE_OBSERVER_INTEGRATION_CONTRACT_FR
 
 Canonical baseline: `6b5111bdbb4cae013cdf9b707eb3cfd58d28dbe4`
 
+Amendment classification:
+`PHASE6_P6_T07_REMOTE_CONTENT_ORCHESTRATION_BOUNDARY_CONTRACT_AMENDMENT`
+
+Amendment marker:
+`P6_T07_REMOTE_CONTENT_ORCHESTRATION_BOUNDARY_AMENDMENT_FROZEN`
+
+Amendment canonical basis: `bead6812a3d2eee74ece423e62ac712ce320db98`
+
+Amendment reason: implementation qualification discovered previously omitted
+generic and recorded orchestrator identity-policy consumers.
+
 ## Purpose
 
 This contract defines the fail-closed integration boundary that adapts the
@@ -257,6 +268,11 @@ the orchestrator owns scope coordination. No migration or new persistence table
 is expected. Classification:
 `EXISTING_BALANCE_OBSERVER_PERSISTENCE_REUSED_UNCHANGED`.
 
+This existing observation normalization and command-persistence path remains
+unchanged. P5-T05 recorded-run ledger persistence also remains unchanged; it
+does not accept `REMOTE_CONTENT`, and P6-T07 does not add a durable
+`REMOTE_CONTENT` run record. No database change is authorized.
+
 ## Factory and Per-Binding Sequence
 
 The factory configuration consists of validated `provider`,
@@ -295,30 +311,107 @@ Executors, resolvers, and credential references MUST be faked or symbolic.
 Tests MUST perform zero real BitGo, DNS, TLS, Solana RPC, credential-environment,
 or provider network activity.
 
+The P6-T07 implementation catalog MUST contain exactly 56 sequential, unique
+case IDs, `P6T07-INT-001` through `P6T07-INT-056`. Cases 001 through 054 remain
+preserved and unrenumbered. `P6T07-INT-055` proves generic orchestrator
+`REMOTE_CONTENT` acceptance and unchanged propagation to the injected or actual
+worker boundary with zero provider-network activity. Case 056 proves the
+recorded and durable boundary remains unexpanded: recorded input is narrowed to
+the existing durable policy, run-ledger TypeScript and runtime allowlists remain
+unchanged, the DB constraint and function remain unchanged, and no
+`REMOTE_CONTENT` durable persistence is introduced.
+
+## REMOTE_CONTENT Orchestration Boundary Amendment
+
+`CustodyBalanceObserverIdentityPolicy` becomes exactly:
+
+```ts
+type CustodyBalanceObserverIdentityPolicy =
+  | "PRODUCTION"
+  | "REMOTE_CONTENT"
+  | "LOCAL_MOCK";
+```
+
+`PRODUCTION` permits `NATIVE | CHECKPOINT` only. `REMOTE_CONTENT` permits
+`CONTENT` only. `LOCAL_MOCK` permits all currently valid identity kinds.
+
+The generic `runCustodyBalanceObserverOneShot` runtime input validator MUST
+accept `PRODUCTION`, `REMOTE_CONTENT`, and `LOCAL_MOCK`, then propagate
+`identityPolicy` unchanged to `runCustodyBalanceObserverWorkUnit` or an injected
+`runWorkUnit` equivalent. The allowed generic-orchestrator source modification
+is limited to this identity-policy allowlist extension. Scope discovery, scope
+refresh, provider grouping and concurrency, scope retry, worker retry ownership,
+abort, result validation, lifecycle reporting, client closure, and summary
+accounting remain unchanged. Classification:
+`P6_T07_GENERIC_ORCHESTRATOR_REMOTE_CONTENT_MINIMAL_VALIDATOR_EXTENSION`.
+
+The recorded wrapper MUST NOT inherit widened `REMOTE_CONTENT` into the durable
+run-ledger path. Its input MUST narrow `identityPolicy` to
+`BeginBalanceObserverRunInput["identityPolicy"]`, using an `Omit` of the generic
+`identityPolicy` plus the narrowed property or an equivalent type. Recorded
+policy therefore remains `PRODUCTION | LOCAL_MOCK` only. Classification:
+`P6_T07_RECORDED_ORCHESTRATOR_DURABLE_POLICY_NARROWING`.
+
+P6-T07 MUST NOT modify `balance-observer-run-ledger-client.ts`, its
+identity-policy runtime allowlist, the custody run-ledger DB CHECK constraint,
+`private.begin_balance_observer_run` identity validation, or the run-ledger
+database schema. Durable `REMOTE_CONTENT` recording is unsupported in P6-T07.
+Classification: `P6_T07_DURABLE_RUN_LEDGER_REMOTE_CONTENT_DEFERRED`.
+
+`P6_T07_RECORDED_REMOTE_CONTENT_ACTIVATION_NOT_YET_AUTHORIZED` applies. Any
+future recorded or durable `REMOTE_CONTENT` activation requires separate durable
+run-ledger governance and any required migration.
+
 ## Future Implementation Scope
 
-Expected new source:
+Required new source:
 
 ```text
 src/server/custody/bitgo-balance-observer-adapter.ts
 ```
 
-Expected new test:
+Required new test/catalog:
 
 ```text
 src/server/custody/bitgo-balance-observer-adapter.test.ts
 ```
 
-Expected modified files are limited to:
+Required modified files:
 
 ```text
 src/server/custody/balance-observer-worker.ts
 scripts/test-p5-t03-custody-balance-observer-worker-runtime.mjs
+src/server/custody/balance-observer-orchestrator.ts
+src/server/custody/balance-observer-recorded-orchestrator.ts
+scripts/test-p5-t04-custody-balance-observer-orchestrator-runtime.mjs
 ```
 
-P6-T04 provider-security, P6-T05 semantic adapter, generic orchestrator, scope
-client, command client, and database schema/migrations are expected to remain
-unchanged. This document does not authorize implementation.
+The exact future implementation total is A = 2, M = 5, D = 0, for 7 paths.
+Worker modification is limited to `REMOTE_CONTENT` identity policy. The worker
+runtime harness owns P6-T07 bridge and worker cases. Generic orchestrator
+modification is limited to runtime identity-policy allowlist extension. Recorded
+orchestrator modification is limited to durable-policy type narrowing. The
+generic orchestrator harness owns case 055 acceptance and propagation proof.
+
+The following remain unchanged: `provider-observation-contract.ts`,
+`bitgo-read-only-semantic-adapter.ts`, `balance-observer-run-ledger-client.ts`,
+`balance-observer-scope-client.ts`, `balance-observer-command-client.ts`,
+`balance-observer-retry.ts`, `balance-observation-normalization.ts`,
+`src/server/provider-security/**`,
+`scripts/test-p5-t05-custody-observer-recorded-orchestrator-runtime.mjs`,
+`scripts/test-p5-t05-custody-observer-run-ledger-client-runtime.mjs`, DB
+schema/migrations, `package.json`, and lock files. This document does not
+authorize implementation.
+
+Case 055 executable proof belongs in
+`scripts/test-p5-t04-custody-balance-observer-orchestrator-runtime.mjs`. It MUST
+prove `REMOTE_CONTENT` validation succeeds, the worker receives that unchanged
+policy, provider network activity is zero, and existing `PRODUCTION` and
+`LOCAL_MOCK` behavior is unchanged. Case 056 is combined evidence from
+TypeScript static narrowing, unchanged recorded-orchestrator and run-ledger
+runtime regressions, zero migration/schema delta, and verification that DB
+allowlists still exclude `REMOTE_CONTENT`. No durable `REMOTE_CONTENT` test row
+is required or authorized.
 
 ## Activation and Environment Boundary
 
@@ -326,6 +419,14 @@ Contract publication and later P6-T07 implementation do not authorize a real
 provider call. The required progression is contract publication, implementation,
 offline qualification, a separately governed TEST one-shot activation, and only
 then a separate consideration of recurring runtime.
+
+P6-T07 implementation may qualify generic non-recorded `REMOTE_CONTENT`
+orchestration offline only. It does not authorize real one-shot execution,
+recorded or durable `REMOTE_CONTENT`, credential provisioning, a real wallet
+resolver, scheduler/polling, or production. A future activation selecting
+`runRecordedCustodyBalanceObserverOneShot` with `REMOTE_CONTENT` semantics MUST
+first pass separate durable run-ledger governance, including migration governance
+if durable policy is expanded.
 
 Scheduler, polling, recurring worker activation, startup hooks, and cron are
 prohibited. The only provider environment is BITGO TEST with asset `TSOL` and
@@ -377,12 +478,20 @@ validation, batch order/count, duplicate rejection, abort handling, correlation
 privacy, symbolic credential use, false-by-default execution context, no direct
 network path, zero bridge retries, fail-closed transfers, `REMOTE_CONTENT`,
 `CONTENT` retention, observation-key reuse, existing persistence ownership,
-unchanged P6-T04/P6-T05/orchestrator and database boundaries, and all required
-tests passing. Production and scheduler activation remain prohibited.
+unchanged P6-T04/P6-T05 and database boundaries, and all required tests passing.
+The generic orchestrator changes only for exact `REMOTE_CONTENT` runtime
+allowlist acceptance and propagation; all other generic behavior remains
+unchanged. The recorded orchestrator is narrowed to durable policy, the
+run-ledger client and DB schema/function remain unchanged, durable
+`REMOTE_CONTENT` remains unsupported, original cases 001 through 054 are
+preserved, and cases 055 and 056 are added for 56 / 56 qualification.
+Production and scheduler activation remain prohibited.
 
 ## Contract Authority
 
 This contract publication authorizes future implementation work only after
-separate implementation governance. It does not authorize a BitGo request,
-credential use, production wallet resolver source, live database testing,
-scheduler, or production access.
+separate implementation governance. The amended contract authorizes future
+offline implementation of the exact seven-path scope only. It does not authorize
+a BitGo request, credential use, real wallet resolver source, live database or
+provider testing, recorded `REMOTE_CONTENT` durable execution, scheduler, or
+production access.
