@@ -19,7 +19,8 @@ import type {
 } from "./balance-observer-run-ledger-client";
 
 export type RunRecordedCustodyBalanceObserverOneShotInput =
-  RunCustodyBalanceObserverOneShotInput & {
+  Omit<RunCustodyBalanceObserverOneShotInput, "identityPolicy"> & {
+    identityPolicy: BeginBalanceObserverRunInput["identityPolicy"];
     runLedgerClient: CustodyBalanceObserverRunLedgerClient;
     runKey: string;
     triggerSource: BeginBalanceObserverRunInput["triggerSource"];

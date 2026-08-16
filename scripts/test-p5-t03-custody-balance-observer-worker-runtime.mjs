@@ -452,6 +452,34 @@ async function assertWorkerSuccessScenarios(modules, client) {
   pass("Production CONTENT rejection");
   pass("Production CONTENT DB command zero");
 
+  const remoteContent = await runCustodyBalanceObserverWorkUnit({
+    workUnit: workUnit("REMOTE_CONTENT", ASSETS.productionContent, [
+      workItem(BINDINGS.productionContent, "0"),
+    ]),
+    adapter: createMockCustodyObservationAdapter({
+      provider: PROVIDER,
+      health: healthFixture(),
+      balances: [
+        successFixture(
+          BINDINGS.productionContent,
+          { kind: "CONTENT" },
+          "210",
+          "210",
+          "2026-08-01T03:10:00.000000Z",
+        ),
+      ],
+    }),
+    commandClient: client,
+  });
+
+  assertSingleSuccess(remoteContent, {
+    observationCreated: true,
+    checkpointCreated: true,
+    checkpointAdvanced: false,
+    checkpointVersion: "1",
+  });
+  pass("P6T07 REMOTE_CONTENT worker success");
+
   const availableFirst = await runCustodyBalanceObserverWorkUnit({
     workUnit: workUnit("LOCAL_MOCK", ASSETS.availableOnly, [
       workItem(BINDINGS.availableOnly, "0"),

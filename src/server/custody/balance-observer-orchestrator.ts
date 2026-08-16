@@ -1289,6 +1289,7 @@ function validateInput(
     input.scopeClient === (input.commandClient as unknown) ||
     typeof input.adapterFactory !== "function" ||
     (input.identityPolicy !== "PRODUCTION" &&
+      input.identityPolicy !== "REMOTE_CONTENT" &&
       input.identityPolicy !== "LOCAL_MOCK")
   ) {
     throw new CustodyBalanceObserverOrchestratorError(

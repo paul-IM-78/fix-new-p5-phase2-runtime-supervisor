@@ -33,6 +33,7 @@ export type { CustodyBalanceObserverRetryPolicy } from "./balance-observer-retry
 
 export type CustodyBalanceObserverIdentityPolicy =
   | "PRODUCTION"
+  | "REMOTE_CONTENT"
   | "LOCAL_MOCK";
 
 export type CustodyBalanceObserverBindingWorkItem = {
@@ -909,7 +910,11 @@ async function recordWithDatabaseRetry({
 function validateWorkUnit(
   workUnit: CustodyBalanceObserverWorkUnit,
 ): ValidatedWorkUnit {
-  if (workUnit.identityPolicy !== "PRODUCTION" && workUnit.identityPolicy !== "LOCAL_MOCK") {
+  if (
+    workUnit.identityPolicy !== "PRODUCTION" &&
+    workUnit.identityPolicy !== "REMOTE_CONTENT" &&
+    workUnit.identityPolicy !== "LOCAL_MOCK"
+  ) {
     throw new RangeError("balance_observer_identity_policy_invalid");
   }
 
@@ -969,6 +974,10 @@ function isIdentityAllowedByPolicy(
 ): boolean {
   if (identityPolicy === "LOCAL_MOCK") {
     return true;
+  }
+
+  if (identityPolicy === "REMOTE_CONTENT") {
+    return identityKind === "CONTENT";
   }
 
   return identityKind === "NATIVE" || identityKind === "CHECKPOINT";
