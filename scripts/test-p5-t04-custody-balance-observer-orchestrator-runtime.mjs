@@ -121,6 +121,7 @@ async function main() {
     await assertDirectRolePrivileges(modules);
     await assertRealDatabaseOneShot(modules);
     await assertInputValidationScenarios(modules.orchestrator);
+    await assertRemoteContentIdentityPolicyScenarios(modules.orchestrator);
     await assertDiscoveryScenarios(modules);
     await assertExecutionScenarios(modules);
     await assertRefreshScenarios(modules);
@@ -799,6 +800,37 @@ async function assertInputValidationScenarios(orchestrator) {
   }
 
   pass("Invalid inputs perform no run side effects");
+}
+
+async function assertRemoteContentIdentityPolicyScenarios(orchestrator) {
+  for (const identityPolicy of ["PRODUCTION", "REMOTE_CONTENT", "LOCAL_MOCK"]) {
+    const observedPolicies = [];
+    const result = await orchestrator.runCustodyBalanceObserverOneShot({
+      scopeClient: createFakeScopeClient([
+        page([scope(PROVIDERS.a, ASSETS.a, [BINDINGS.a1])]),
+      ]),
+      commandClient: createFakeCommandClient(),
+      adapterFactory: createAdapterFactory(),
+      identityPolicy,
+      runtime: {
+        runWorkUnit: async ({ workUnit }) => {
+          observedPolicies.push(workUnit.identityPolicy);
+          return workerResult(workUnit.bindings, "SUCCESS");
+        },
+      },
+    });
+
+    assert(result.status === "COMPLETED", `${identityPolicy} policy accepted`);
+    pass(`${identityPolicy} policy accepted`);
+    assert(
+      observedPolicies.length === 1 && observedPolicies[0] === identityPolicy,
+      `${identityPolicy} policy propagated unchanged`,
+    );
+    pass(`${identityPolicy} policy propagated unchanged`);
+  }
+
+  assert(providerNetworkCalls === 0, "P6T07-INT-055 provider network zero");
+  pass("P6T07-INT-055 REMOTE_CONTENT propagation");
 }
 
 async function assertInvalidConcurrencyNoSideEffects(
