@@ -33,6 +33,7 @@
     "test:custody:wallet-id-registry:local": "node scripts/test-p6-t11-custody-wallet-id-registry-runtime.mjs",
     "test:p6-t12:provider-credential-reference-registry": "node scripts/test-p6-t12-provider-credential-reference-registry-runtime.mjs",
     "test:p6-t13:authorized-execution-context-composition": "node scripts/test-p6-t13-authorized-execution-context-composition-runtime.mjs",
+    "test:p6-t14:controlled-bitgo-test-activation": "node scripts/test-p6-t14-controlled-bitgo-test-activation-runtime.mjs",
     "test:domain:admin-lifecycle:local": "node scripts/domain/admin-domain-lifecycle.local.mjs",
     "test:domain:wallet-status:local": "node scripts/domain/wallet-account-status.local.mjs",
     "test:phase2:closeout:local": "node scripts/phase/phase2-closeout.local.mjs",
